@@ -567,6 +567,44 @@ internal sealed class CommanderBuildPreview
         return false;
     }
 
+    /// <summary>
+    /// The renderers that only exist as a lower detail copy: every LOD past the first draws the
+    /// model again, so drawing them all would stack it on top of itself. A renderer the first LOD
+    /// also lists is not one of them: the Chimera mod's FRCV and CRV-L keep their hull in both
+    /// levels, and leaving it out drew the turret and tracks with no body.
+    /// </summary>
+    internal static HashSet<Renderer> CollectLowDetail(GameObject prefab)
+    {
+        HashSet<Renderer> lowDetail = new();
+        LODGroup[] groups = prefab.GetComponentsInChildren<LODGroup>(true);
+        for (int i = 0; i < groups.Length; i++)
+        {
+            LOD[] levels = groups[i].GetLODs();
+            for (int level = levels.Length - 1; level >= 0; level--)
+            {
+                Renderer[] renderers = levels[level].renderers;
+                for (int r = 0; r < renderers.Length; r++)
+                {
+                    if (renderers[r] == null)
+                    {
+                        continue;
+                    }
+
+                    if (level == 0)
+                    {
+                        lowDetail.Remove(renderers[r]);
+                    }
+                    else
+                    {
+                        lowDetail.Add(renderers[r]);
+                    }
+                }
+            }
+        }
+
+        return lowDetail;
+    }
+
     internal static void SelfCheck()
     {
         RoadBounds straight = new(100f, 100f, 0f, 500f);
@@ -1810,26 +1848,7 @@ internal sealed class CommanderBuildPreview
             return cached;
         }
 
-        // Every LOD past the first draws the same building again at lower detail, so drawing them
-        // all would render the structure three times over on top of itself.
-        HashSet<Renderer> lowDetail = new();
-        LODGroup[] groups = prefab.GetComponentsInChildren<LODGroup>(true);
-        for (int i = 0; i < groups.Length; i++)
-        {
-            LOD[] levels = groups[i].GetLODs();
-            for (int level = 1; level < levels.Length; level++)
-            {
-                Renderer[] renderers = levels[level].renderers;
-                for (int r = 0; r < renderers.Length; r++)
-                {
-                    if (renderers[r] != null)
-                    {
-                        lowDetail.Add(renderers[r]);
-                    }
-                }
-            }
-        }
-
+        HashSet<Renderer> lowDetail = CollectLowDetail(prefab);
         Transform root = prefab.transform;
         MeshFilter[] filters = prefab.GetComponentsInChildren<MeshFilter>(true);
         for (int i = 0; i < filters.Length; i++)

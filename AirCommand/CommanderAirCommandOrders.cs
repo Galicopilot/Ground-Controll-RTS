@@ -417,8 +417,11 @@ internal sealed partial class CommanderAirCommandService
 
         // A player order outranks a low tank, on the way to the pumps or parked at them. Without the flag the next resupply sweep, or the base game's own 20 %
         // check, saw the same low fuel and turned it straight back for the field.
+        // A new airframe's tanks hold nothing until its first Refuel, which comes after registration,
+        // and a cargo run gives its order at registration: that read 0 % on a full Chimera.
         float fuel = aircraft.GetFuelLevel();
-        mission.IgnoreLowFuel = fuel < ResupplyFuelFloor;
+        bool tanksNotFilledYet = fuel <= 0f && aircraft.pilots?[0]?.flightInfo?.HasTakenOff != true;
+        mission.IgnoreLowFuel = fuel < ResupplyFuelFloor && !tanksNotFilledYet;
 
         // Any plain order supersedes a landing order, which is what gets an aircraft parked on a
         // base it was told to take — or already on the approach to one — back into the air the
@@ -793,10 +796,23 @@ internal sealed partial class CommanderAirCommandService
         if (aircraft.radarAlt > 5f
             && aircraft.pilots != null
             && aircraft.pilots.Length > 0
-            && aircraft.pilots[0]?.currentState is AIHeloLandingState or AIPilotLandingState)
+            && (aircraft.pilots[0]?.currentState is AIHeloLandingState or AIPilotLandingState
+                || IsModdedTransportState(aircraft.pilots[0]?.currentState)))
         {
             ReturnToCombatState(aircraft);
         }
+    }
+
+    /// <summary>
+    /// A cargo AI an aircraft mod brought with it, such as the Chimera's <c>AIFixedWingTransportState</c>.
+    /// Matched by name because that assembly is not always loaded. It picks its own drop point, so
+    /// a commanded aircraft must not be in one.
+    /// </summary>
+    private static bool IsModdedTransportState(PilotBaseState? state)
+    {
+        return state != null
+            && state is not AIHeloTransportState
+            && state.GetType().Name.EndsWith("TransportState", StringComparison.Ordinal);
     }
 
     private static AirCommandMode GetModeForTarget(Unit target)

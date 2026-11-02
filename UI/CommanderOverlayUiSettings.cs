@@ -47,6 +47,10 @@ internal sealed partial class CommanderOverlayUi
             "open_air" => CommanderSettings.OpenAirCommand,
             "open_naval" => CommanderSettings.OpenNaval,
             "open_oob" => CommanderSettings.OpenOrderOfBattle,
+            "toggle_map" => CommanderSettings.ToggleTacticalMap,
+            "speed_1" => CommanderSettings.GameSpeed1,
+            "speed_2" => CommanderSettings.GameSpeed2,
+            "speed_4" => CommanderSettings.GameSpeed4,
             "center_follow" => CommanderSettings.CameraCenterFollow,
             "toggle_ui" => CommanderSettings.ToggleUi,
             "toggle_commander" => CommanderSettings.ToggleCommander,
@@ -86,6 +90,10 @@ internal sealed partial class CommanderOverlayUi
             case "open_air": CommanderSettings.OpenAirCommand = shortcut; break;
             case "open_naval": CommanderSettings.OpenNaval = shortcut; break;
             case "open_oob": CommanderSettings.OpenOrderOfBattle = shortcut; break;
+            case "toggle_map": CommanderSettings.ToggleTacticalMap = shortcut; break;
+            case "speed_1": CommanderSettings.GameSpeed1 = shortcut; break;
+            case "speed_2": CommanderSettings.GameSpeed2 = shortcut; break;
+            case "speed_4": CommanderSettings.GameSpeed4 = shortcut; break;
             case "center_follow": CommanderSettings.CameraCenterFollow = shortcut; break;
             case "toggle_ui": CommanderSettings.ToggleUi = shortcut; break;
             case "toggle_commander": CommanderSettings.ToggleCommander = shortcut; break;
@@ -119,6 +127,7 @@ internal sealed partial class CommanderOverlayUi
         CommanderSettings.OpenAirCommand = new KeyboardShortcut(KeyCode.F);
         CommanderSettings.OpenNaval = new KeyboardShortcut(KeyCode.V);
         CommanderSettings.OpenOrderOfBattle = new KeyboardShortcut(KeyCode.O);
+        CommanderSettings.ToggleTacticalMap = new KeyboardShortcut(KeyCode.J);
     }
 
     private static void ResetActionBindings()
@@ -140,6 +149,9 @@ internal sealed partial class CommanderOverlayUi
         CommanderSettings.RotateBuilding = new KeyboardShortcut(KeyCode.R);
         CommanderSettings.CancelBlueprint = new KeyboardShortcut(KeyCode.Delete);
         CommanderSettings.MapBoxSelect = new KeyboardShortcut(KeyCode.LeftControl);
+        CommanderSettings.GameSpeed1 = new KeyboardShortcut(KeyCode.F5);
+        CommanderSettings.GameSpeed2 = new KeyboardShortcut(KeyCode.F6);
+        CommanderSettings.GameSpeed4 = new KeyboardShortcut(KeyCode.F7);
     }
 
     private void DrawSettingsWindowIfVisible()
@@ -442,18 +454,20 @@ internal sealed partial class CommanderOverlayUi
             CommanderUiTheme.MutedLabel);
 
         float mapY = followY + 164f;
-        GUI.Box(new Rect(12f, mapY, width, 154f), string.Empty, CommanderUiTheme.Panel);
+        GUI.Box(new Rect(12f, mapY, width, 192f), string.Empty, CommanderUiTheme.Panel);
         GUI.Label(new Rect(24f, mapY + 10f, width - 24f, 22f), "TACTICAL MAP", CommanderUiTheme.Header);
         CommanderSettings.MapDragSpeed = DrawCameraSlider(
             mapY + 40f, "Map drag speed", CommanderSettings.MapDragSpeed, 0.25f, 4f, "0.0#", "x");
+        CommanderSettings.MapZoomSpeed = DrawCameraSlider(
+            mapY + 78f, "Map zoom speed", CommanderSettings.MapZoomSpeed, 0.25f, 4f, "0.0#", "x");
         CommanderSettings.MapJumpKeepHeight = CommanderUiTheme.Check(
-            new Rect(24f, mapY + 74f, width - 48f, 30f),
+            new Rect(24f, mapY + 112f, width - 48f, 30f),
             CommanderSettings.MapJumpKeepHeight,
             "Keep the camera's current height when jumping from the map",
             CommanderUiTheme.Toggle);
         GUI.enabled = !CommanderSettings.MapJumpKeepHeight;
         CommanderSettings.MapJumpHeight = Mathf.Round(DrawCameraSlider(
-            mapY + 114f, "Map jump height", CommanderSettings.MapJumpHeight, 100f, 5000f, "0", " m") / 50f) * 50f;
+            mapY + 152f, "Map jump height", CommanderSettings.MapJumpHeight, 100f, 5000f, "0", " m") / 50f) * 50f;
         GUI.enabled = true;
     }
 
@@ -651,7 +665,7 @@ internal sealed partial class CommanderOverlayUi
 
     private void DrawControlSettings(float y)
     {
-        GUI.Box(new Rect(12f, y, settingsWindowRect.width - 24f, 632f), string.Empty, CommanderUiTheme.Panel);
+        GUI.Box(new Rect(12f, y, settingsWindowRect.width - 24f, 696f), string.Empty, CommanderUiTheme.Panel);
         GUI.Label(
             new Rect(24f, y + 8f, settingsWindowRect.width - 48f, 32f),
             "Bindings are active only in RTS mode. Click one, then press a keyboard or mouse button. Escape cancels.",
@@ -728,13 +742,18 @@ internal sealed partial class CommanderOverlayUi
             "ping",
             "Mark the spot or unit under the cursor for your whole team. Pings show in the cockpit too.");
 
-        if (GUI.Button(new Rect(left, y + 588f, columnWidth, 32f), "RESET CAMERA + WINDOWS", CommanderUiTheme.Button))
+        DrawBinding(new Rect(left, rowY + 512f, columnWidth, 30f), "Tactical map", "toggle_map");
+        DrawBinding(new Rect(left, rowY + 544f, columnWidth, 30f), "Speed 1x", "speed_1", "Host only.");
+        DrawBinding(new Rect(right, rowY + 512f, columnWidth, 30f), "Speed 2x", "speed_2", "Host only.");
+        DrawBinding(new Rect(right, rowY + 544f, columnWidth, 30f), "Speed 4x", "speed_4", "Host only.");
+
+        if (GUI.Button(new Rect(left, y + 652f, columnWidth, 32f), "RESET CAMERA + WINDOWS", CommanderUiTheme.Button))
         {
             ResetCameraBindings();
             bindingCapture = null;
         }
 
-        if (GUI.Button(new Rect(right, y + 588f, columnWidth, 32f), "RESET ACTIONS", CommanderUiTheme.Button))
+        if (GUI.Button(new Rect(right, y + 652f, columnWidth, 32f), "RESET ACTIONS", CommanderUiTheme.Button))
         {
             ResetActionBindings();
             bindingCapture = null;
@@ -818,6 +837,7 @@ internal sealed partial class CommanderOverlayUi
     private void ResetUiLayout()
     {
         positionsInitialized = false;
+        CommanderWindowScale.ResetExtents();
         supplyHeliUi.ResetPosition();
         airCommandUi.ResetPosition();
         navalPurchaseUi.ResetPosition();

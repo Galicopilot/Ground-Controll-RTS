@@ -396,6 +396,21 @@ internal sealed partial class CommanderAirCommandService : ICommanderActivate, I
         return altitude < 0f ? -1 : Mathf.RoundToInt(altitude / TargetAltitudeStepMeters);
     }
 
+    /// <summary>
+    /// Where a notch sits along the slider, 0 to 1. The travel is a square curve because 50 evenly
+    /// spaced notches left about 2 px each on a 100 px slider, and the low heights were unpickable.
+    /// </summary>
+    internal static float AltitudeSliderPosition(int notch)
+    {
+        return Mathf.Sqrt((notch + 1f) / (MaxAltitudeNotch + 1f));
+    }
+
+    /// <summary>The notch at a slider position, the inverse of <see cref="AltitudeSliderPosition"/>.</summary>
+    internal static int AltitudeNotchAt(float position)
+    {
+        return Mathf.RoundToInt(position * position * (MaxAltitudeNotch + 1f)) - 1;
+    }
+
     internal static string FormatTargetAltitude(float altitude)
     {
         return altitude < 0f ? "LOW LEVEL" : altitude == 0f ? "AUTO" : $"{altitude:0} m";
@@ -774,7 +789,9 @@ internal sealed partial class CommanderAirCommandService : ICommanderActivate, I
             return CommanderGameAccess.GetUnitLabel(aircraft);
         }
 
-        string state = mission.Intent == LandingIntent.Hold
+        string state = mission.Intent == LandingIntent.Reserve
+            ? "TO RESERVE"
+            : mission.Intent == LandingIntent.Hold
             ? mission.Parked ? "ON PAD" : "TO PAD"
             : mission.Parked && mission.Intent == LandingIntent.Resupply
             ? mission.ReportedShortfall ? "GROUNDED" : "SERVICING"

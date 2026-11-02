@@ -925,6 +925,13 @@ internal sealed class CommanderSpawnService : ICommanderActivate, ICommanderDeac
         return true;
     }
 
+    /// <summary>Right click with a depot selected: the same as SET RALLY and a click there.</summary>
+    internal void SetRallyPoint(GlobalPosition rallyPoint)
+    {
+        rallySelectionQueue = GetSelectedQueue();
+        CompleteRallyPointSelection(rallyPoint);
+    }
+
     /// <summary>Control group new arrivals from this depot join automatically; 0 is off.</summary>
     internal int GetReinforceGroup()
     {

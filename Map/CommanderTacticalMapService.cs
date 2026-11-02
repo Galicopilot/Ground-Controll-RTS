@@ -13,7 +13,12 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
     /// <summary>The map opens under the command bar, not behind it.</summary>
     private const float TacticalMapTop = 52f;
     private const float ResizeGripSize = 18f;
-    private const float HeaderHeight = 30f;
+    private const float HeaderRowHeight = 30f;
+
+    /// <summary>Narrower than this the header's buttons need a second row, or they overlap.</summary>
+    private const float OneRowHeaderWidth = 524f;
+    private const float WideHeaderWidth = 612f;
+    private const float HeaderButtonStep = 2f;
 
     private static readonly MethodInfo? JumpCameraToMethod = AccessTools.Method(typeof(DynamicMap), "JumpCameraTo");
 
@@ -25,6 +30,7 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
     private bool positionInitialized;
     private bool dragging;
     private bool resizing;
+    private float resizeRightEdge;
     private bool helpVisible;
     private float mapSize = Mathf.Clamp(CommanderSettings.TacticalMapSize, MinimumMapSize, 2000f);
     private Vector2 dragOffset;
@@ -60,7 +66,11 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
 
     private static float MaximumMapSize => Mathf.Max(
         MinimumMapSize,
-        Mathf.Min(CommanderUiScale.Width - (TacticalMapMargin * 2f), CommanderUiScale.Height - (TacticalMapMargin * 2f) - HeaderHeight));
+        Mathf.Min(CommanderUiScale.Width - (TacticalMapMargin * 2f), CommanderUiScale.Height - (TacticalMapMargin * 2f) - HeaderRowHeight));
+
+    private bool HeaderHasTwoRows => mapSize < OneRowHeaderWidth;
+
+    private float HeaderHeight => HeaderHasTwoRows ? (HeaderRowHeight * 2f) - 4f : HeaderRowHeight;
 
     public void TickActive()
     {
@@ -354,12 +364,14 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
         CommanderUiTheme.DrawAccentLine(new Rect(header.x, header.y, header.width, 2f));
         GUI.Label(new Rect(header.x + 12f, header.y + 3f, 60f, 24f), "MAP", CommanderUiTheme.Header);
         bool oldEnabled = GUI.enabled;
+        float buttonWidth = mapSize >= WideHeaderWidth ? 80f : 66f;
+        float step = buttonWidth + HeaderButtonStep;
 
         // Radar warning rings round every aircraft you command, on this map (CommanderRadarExposure).
         bool radarRings = CommanderSettings.RadarExposureRings;
-        if (GUI.Button(
-            new Rect(header.x + 60f, header.y + 4f, 80f, 22f),
-            "RADAR",
+        if (CommanderUiTheme.FitButton(
+            new Rect(header.x + 60f, header.y + 4f, buttonWidth, 22f),
+            new GUIContent("RADAR"),
             radarRings ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
         {
             CommanderSettings.RadarExposureRings = !radarRings;
@@ -367,33 +379,36 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
 
         // Every route you own, not just the selection's (CommanderMapRouteRenderer).
         bool allRoutes = CommanderSettings.MapAllRoutes;
-        if (GUI.Button(
-            new Rect(header.x + 142f, header.y + 4f, 80f, 22f),
-            "ROUTES",
+        if (CommanderUiTheme.FitButton(
+            new Rect(header.x + 60f + step, header.y + 4f, buttonWidth, 22f),
+            new GUIContent("ROUTES"),
             allRoutes ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
         {
             CommanderSettings.MapAllRoutes = !allRoutes;
         }
 
-        Rect cameraGroup = new(header.xMax - 384f, header.y + 2f, 316f, 26f);
+        float cameraWidth = 52f + (step * 3f);
+        Rect cameraGroup = HeaderHasTwoRows
+            ? new Rect(header.x + 2f, header.y + HeaderRowHeight - 4f, cameraWidth, 26f)
+            : new Rect(header.xMax - 66f - cameraWidth, header.y + 2f, cameraWidth, 26f);
         GUI.Label(new Rect(cameraGroup.x, cameraGroup.y + 1f, 50f, 24f), "CAMERA", CommanderUiTheme.Caption);
         GUI.enabled = oldEnabled && cameraFollowService.CanFollow;
-        if (GUI.Button(
-            new Rect(cameraGroup.x + 52f, cameraGroup.y + 2f, 80f, 22f),
-            "FOLLOW",
+        if (CommanderUiTheme.FitButton(
+            new Rect(cameraGroup.x + 52f, cameraGroup.y + 2f, buttonWidth, 22f),
+            new GUIContent("FOLLOW"),
             cameraFollowService.Enabled ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
         {
             cameraFollowService.Toggle();
         }
 
-        if (GUI.Button(new Rect(cameraGroup.x + 134f, cameraGroup.y + 2f, 80f, 22f), "CENTER", CommanderUiTheme.Button))
+        if (CommanderUiTheme.FitButton(new Rect(cameraGroup.x + 52f + step, cameraGroup.y + 2f, buttonWidth, 22f), new GUIContent("CENTER"), CommanderUiTheme.Button))
         {
             cameraFollowService.CenterOnSelection();
         }
 
-        if (GUI.Button(
-            new Rect(cameraGroup.x + 216f, cameraGroup.y + 2f, 80f, 22f),
-            "POV",
+        if (CommanderUiTheme.FitButton(
+            new Rect(cameraGroup.x + 52f + (step * 2f), cameraGroup.y + 2f, buttonWidth, 22f),
+            new GUIContent("POV"),
             cameraFollowService.PovMode ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
         {
             cameraFollowService.TogglePov();
@@ -417,11 +432,11 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
         {
             CommanderUiTheme.DrawHelpOverlay(
                 new Rect(mapRect.x + 10f, mapRect.y + 10f, mapRect.width - 20f, 82f),
-                "LMB clicks icons; drag LMB to pan the map, or hold the map box-select key and drag for a selection box. RMB sets a travel point, and RMB on a hostile icon makes it an attack order. Hold the queue key to chain points into a route the unit drives in order. Drag the bottom-right corner to resize this map. FOLLOW tracks position, CENTER jumps once, POV attaches to the unit. M opens the fullscreen map.");
+                "LMB clicks icons; drag LMB to pan the map, or hold the map box-select key and drag for a selection box. RMB sets a travel point, and RMB on a hostile icon makes it an attack order. Hold the queue key to chain points into a route the unit drives in order. Drag the bottom-left corner to resize this map. FOLLOW tracks position, CENTER jumps once, POV attaches to the unit. M opens the fullscreen map.");
         }
 
         HandleDrag(new Rect(header.x, header.y, header.width - 66f, header.height));
-        gripRect = new Rect(mapRect.xMax - ResizeGripSize, mapRect.yMax - ResizeGripSize, ResizeGripSize, ResizeGripSize);
+        gripRect = new Rect(mapRect.x, mapRect.yMax - ResizeGripSize, ResizeGripSize, ResizeGripSize);
         HandleResize(gripRect);
     }
 
@@ -683,14 +698,19 @@ internal sealed class CommanderTacticalMapService : ICommanderTickActive, IComma
         if (current.type == EventType.MouseDown && current.button == 0 && gripRect.Contains(current.mousePosition))
         {
             resizing = true;
+            resizeRightEdge = mapWindowRect.xMax;
             current.Use();
         }
         else if (current.type == EventType.MouseDrag && resizing)
         {
+            // The grip is on the left, so the right side stays put and the map grows toward the
+            // cursor; it stops at the screen edge, or the clamp would slide the map off the grip.
             float wanted = Mathf.Max(
-                current.mousePosition.x - mapWindowRect.x,
+                resizeRightEdge - current.mousePosition.x,
                 current.mousePosition.y - mapWindowRect.y - HeaderHeight);
-            mapSize = Mathf.Clamp(wanted, MinimumMapSize, MaximumMapSize);
+            float largest = Mathf.Max(MinimumMapSize, Mathf.Min(MaximumMapSize, resizeRightEdge - TacticalMapMargin));
+            mapSize = Mathf.Clamp(wanted, MinimumMapSize, largest);
+            mapWindowRect.x = resizeRightEdge - mapSize;
             mapWindowRect.width = mapSize;
             mapWindowRect.height = mapSize + HeaderHeight;
             mapWindowRect = CommanderUiTheme.ClampWindow(mapWindowRect, TacticalMapMargin);

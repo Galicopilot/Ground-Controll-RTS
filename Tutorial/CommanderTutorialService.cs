@@ -75,7 +75,7 @@ internal sealed class CommanderTutorialService : ICommanderTickPersistent, IComm
                 () => BaseObjective("Maris")),
             new Step(
                 "SPEED UP TIME",
-                () => "The drive takes a while. Open SETTINGS on the command bar and press 2x or 4x at the top of the window to run the game faster.",
+                () => $"The drive takes a while. Press {CommanderSettings.GameSpeed2} or {CommanderSettings.GameSpeed4}, or open SETTINGS on the command bar and press 2x or 4x at the top of the window, to run the game faster.",
                 SpedUp,
                 () => BaseObjective("Maris")),
             new Step(
@@ -85,7 +85,7 @@ internal sealed class CommanderTutorialService : ICommanderTickPersistent, IComm
                 () => BaseObjective("Maris")),
             new Step(
                 "BACK TO 1X",
-                () => "Maris is yours. Open SETTINGS again and press 1x to put the game back to normal speed.",
+                () => $"Maris is yours. Press {CommanderSettings.GameSpeed1}, or 1x at the top of SETTINGS, to put the game back to normal speed.",
                 NormalSpeed),
             new Step(
                 "LAUNCH AN AIRCRAFT",

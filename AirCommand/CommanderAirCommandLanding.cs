@@ -57,6 +57,9 @@ internal sealed partial class CommanderAirCommandService
     /// A highway strip is long, so this is generous on purpose.</summary>
     private const float OnFieldMeters = 3000f;
 
+    /// <summary>How long a RESERVE landing waits for a safe ejection before stocking it without one.</summary>
+    private const float ReserveEjectTimeoutSeconds = 15f;
+
     /// <summary>How close another aeroplane has to be to a service stand for that stand to count as
     /// taken. A fighter is about fifteen metres long, so this is one parked aircraft and room to
     /// turn in beside it.</summary>
@@ -213,7 +216,7 @@ internal sealed partial class CommanderAirCommandService
         bool hasMission = service.missions.TryGetValue(aircraft, out AirMission mission);
         if (hasMission && mission.LandingBase != null)
         {
-            return true;
+            return mission.Intent != LandingIntent.Reserve;
         }
 
         // A player's aeroplane the base game flew home taxis to a stand and ejects, returning it to
@@ -653,7 +656,7 @@ internal sealed partial class CommanderAirCommandService
         }
 
         // Here and not at the click: a guest's order only reaches the host's cargo runs through this.
-        if (intent == LandingIntent.Capture)
+        if (intent == LandingIntent.Capture || intent == LandingIntent.Reserve)
         {
             CommanderSupplyHeliService.Instance?.EndCargoRun(aircraft);
         }
@@ -748,11 +751,37 @@ internal sealed partial class CommanderAirCommandService
     }
 
     /// <summary>
+    /// Sends an aircraft to the nearest field its faction holds, where the crew ejects and the
+    /// airframe goes back into stock. One already standing on that field does so where it is.
+    /// </summary>
+    internal bool ReserveAircraft(Aircraft aircraft)
+    {
+        if (ForwardAir("air.reserve", aircraft))
+        {
+            return true;
+        }
+
+        Airbase? nearest = FindNearestOwnedAirbase(aircraft, mustFit: true) ?? FindNearestOwnedAirbase(aircraft);
+        if (nearest == null)
+        {
+            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly airbase to return to.");
+            return false;
+        }
+
+        return SetAircraftLandingOrder(aircraft, nearest, LandingIntent.Reserve, append: false);
+    }
+
+    /// <summary>
     /// What the selection bar says about an aircraft's tank and servicing, or empty when there is
     /// nothing to say, so a refuelling aeroplane does not look stuck.
     /// </summary>
     internal string GetServiceStatus(Aircraft aircraft)
     {
+        if (missions.TryGetValue(aircraft, out AirMission reserving) && reserving.Intent == LandingIntent.Reserve)
+        {
+            return "RETURNING TO RESERVE";
+        }
+
         if (missions.TryGetValue(aircraft, out AirMission mission) && mission.Intent == LandingIntent.Resupply)
         {
             if (!mission.Parked)
@@ -1394,6 +1423,28 @@ internal sealed partial class CommanderAirCommandService
     }
 
     /// <summary>
+    /// Ejects the crew of a parked RESERVE landing. The ejection only stocks the airframe under
+    /// 2 m/s on a held field and destroys it anywhere else, and a sailing carrier's deck never gets
+    /// that slow, so one that cannot pass the test in time is stocked without the ejection.
+    /// </summary>
+    private static void EjectIntoReserve(Aircraft aircraft, AirMission mission)
+    {
+        if (aircraft.HasEjected())
+        {
+            return;
+        }
+
+        if (aircraft.speed < 2f && mission.Hq.AnyNearAirbase(aircraft.transform.position, out _))
+        {
+            aircraft.StartEjectionSequence();
+        }
+        else if (Time.time >= mission.ResupplyReadyAt)
+        {
+            aircraft.ReturnToInventory();
+        }
+    }
+
+    /// <summary>
     /// Stops the aircraft where it rolled out and, on a capture, makes it worth something to the
     /// ring it is standing in.
     /// </summary>
@@ -1420,6 +1471,10 @@ internal sealed partial class CommanderAirCommandService
                 $"{CommanderGameAccess.GetUnitLabel(aircraft).ToUpperInvariant()} DOWN AT "
                     + $"{CommanderCaptureService.GetAirbaseLabel(airbase).ToUpperInvariant()} - SERVICING",
                 aircraft);
+        }
+        else if (mission.Intent == LandingIntent.Reserve)
+        {
+            mission.ResupplyReadyAt = Time.time + ReserveEjectTimeoutSeconds;
         }
 
         if (aircraft.pilots != null)
@@ -1528,6 +1583,7 @@ internal sealed partial class CommanderAirCommandService
         {
             LandingIntent.Capture => $"{label} ordered to land on {field_} and hold it.",
             LandingIntent.Hold => $"{label} standing by at {field_}.",
+            LandingIntent.Reserve => $"{label} ordered to land at {field_} and return to reserve.",
             _ => $"{label} ordered to land at {field_} to rearm.",
         });
         CommanderAlertService.Instance?.NotifyCaptureOrder(
@@ -1535,6 +1591,7 @@ internal sealed partial class CommanderAirCommandService
             {
                 LandingIntent.Capture => $"AIR CAPTURE: {field_.ToUpperInvariant()}",
                 LandingIntent.Hold => $"STANDBY: {field_.ToUpperInvariant()}",
+                LandingIntent.Reserve => $"RESERVE: {field_.ToUpperInvariant()}",
                 _ => $"RESUPPLY: {field_.ToUpperInvariant()}",
             },
             aircraft);
@@ -1884,6 +1941,10 @@ internal sealed partial class CommanderAirCommandService
                 if (mission.Intent == LandingIntent.Resupply)
                 {
                     ServiceParkedAircraft(aircraft, mission, airbase);
+                }
+                else if (mission.Intent == LandingIntent.Reserve)
+                {
+                    EjectIntoReserve(aircraft, mission);
                 }
 
                 continue;

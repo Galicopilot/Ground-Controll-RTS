@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using BepInEx.Configuration;
+using UnityEngine;
 
 namespace GroundControlRts;
 
@@ -22,9 +23,27 @@ internal sealed partial class CommanderOverlayUi
             ToggleOrderOfBattle();
         }
 
+        // Not while paused: a speed key would run a game the player has stopped.
+        if (Time.timeScale > 0f && CanSetSpeed)
+        {
+            KeyboardShortcut[] speedKeys = { CommanderSettings.GameSpeed1, CommanderSettings.GameSpeed2, CommanderSettings.GameSpeed4 };
+            for (int i = 0; i < speedKeys.Length; i++)
+            {
+                if (CommanderShortcutInput.IsDown(speedKeys[i]))
+                {
+                    TimeScaleManager.Scale = TimeScaleSteps[i];
+                }
+            }
+        }
+
         if (!CommanderFeatureGate.AdvancedFeaturesEnabled)
         {
             return;
+        }
+
+        if (CommanderShortcutInput.IsDown(CommanderSettings.ToggleTacticalMap) && ShowTacticalMapUi)
+        {
+            CommanderTacticalMapService.Instance?.Toggle();
         }
 
         if (CommanderShortcutInput.IsDown(CommanderSettings.OpenBuild))
@@ -45,6 +64,37 @@ internal sealed partial class CommanderOverlayUi
         if (CommanderShortcutInput.IsDown(CommanderSettings.OpenNaval) && !CommanderDraftService.IsDraftMission)
         {
             navalPurchaseUi.Toggle();
+        }
+    }
+
+    /// <summary>
+    /// Enter presses the open window's buy button. One press buys one thing: the shop under the
+    /// cursor if there is one, else AIR COMMAND, the naval dock and the depot in that order.
+    /// </summary>
+    internal void HandleBuyKey()
+    {
+        if (bindingCapture != null
+            || ScreenshotUiHidden
+            || !CommanderFeatureGate.AdvancedFeaturesEnabled
+            || !(Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+        {
+            return;
+        }
+
+        Vector2 mouse = Input.mousePosition;
+        if (showNavalUi && navalPurchaseUi.ContainsScreenPoint(mouse))
+        {
+            navalPurchaseUi.PressBuy();
+        }
+        else if (showDepotUi && depotUi.ContainsScreenPoint(mouse))
+        {
+            depotUi.PressBuy();
+        }
+        else if (!(showAirCommandUi && airCommandUi.PressBuy())
+            && !(showNavalUi && navalPurchaseUi.PressBuy())
+            && showDepotUi)
+        {
+            depotUi.PressBuy();
         }
     }
 

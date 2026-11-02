@@ -1,3 +1,4 @@
+using NuclearOption.MissionEditorScripts;
 using UnityEngine;
 
 namespace GroundControlRts;
@@ -8,10 +9,17 @@ namespace GroundControlRts;
 /// </summary>
 internal sealed partial class CommanderAirCommandUi
 {
+    private const string PresetNameField = "gc.presetName";
+    private const float PresetRowButtonWidth = 66f;
+
     /// <summary>Which saved preset's DELETE is armed, and until when. Two clicks, because a saved
     /// preset is gone for good.</summary>
     private int deletePresetArmed = -1;
     private float deletePresetArmedUntil;
+
+    private CommanderAirCommandService.LoadoutPreset? renamingPreset;
+    private string renameText = string.Empty;
+    private bool focusRenameField;
 
     private int openPylonIndex = -1;
     private Vector2 pylonScroll;
@@ -38,7 +46,13 @@ internal sealed partial class CommanderAirCommandUi
         for (int i = 0; i < service.Presets.Count; i++)
         {
             bool custom = service.Presets[i].Custom;
-            float buttonWidth = view.width - 24f - (custom ? 66f : 0f);
+            float buttonWidth = view.width - 24f - (custom ? 2f * PresetRowButtonWidth : 0f);
+            if (ReferenceEquals(service.Presets[i], renamingPreset))
+            {
+                DrawRenameRow(2f + (i * 52f), buttonWidth);
+                continue;
+            }
+
             if (GUI.Button(
                 new Rect(2f, 2f + (i * 52f), buttonWidth, 46f),
                 service.GetPresetLabel(i),
@@ -52,9 +66,17 @@ internal sealed partial class CommanderAirCommandUi
                 continue;
             }
 
-            bool armed = deletePresetArmed == i && Time.unscaledTime <= deletePresetArmedUntil;
             if (GUI.Button(
                 new Rect(buttonWidth + 6f, 2f + (i * 52f), 60f, 46f),
+                new GUIContent("RENAME", "Give this saved preset your own name."),
+                CommanderUiTheme.Button))
+            {
+                BeginRename(service.Presets[i]);
+            }
+
+            bool armed = deletePresetArmed == i && Time.unscaledTime <= deletePresetArmedUntil;
+            if (GUI.Button(
+                new Rect(buttonWidth + PresetRowButtonWidth + 6f, 2f + (i * 52f), 60f, 46f),
                 new GUIContent(armed ? "SURE?" : "DELETE", "Deletes this saved preset for good. Click twice."),
                 CommanderUiTheme.DangerButton))
             {
@@ -72,6 +94,56 @@ internal sealed partial class CommanderAirCommandUi
         }
 
         GUI.EndScrollView();
+    }
+
+    private void BeginRename(CommanderAirCommandService.LoadoutPreset preset)
+    {
+        renamingPreset = preset;
+        renameText = preset.Name;
+        focusRenameField = true;
+        CommanderShortcutInput.ModTextFieldOpen = true;
+    }
+
+    /// <summary>Hands the keyboard back. Hide calls this outside OnGUI, so no GUI calls here.</summary>
+    private void EndRename()
+    {
+        renamingPreset = null;
+        CommanderShortcutInput.ModTextFieldOpen = false;
+        InputFieldChecker.InsideInputField = false;
+    }
+
+    /// <summary>The text field in place of a saved preset's row. Enter or OK keeps it, Escape or
+    /// CANCEL leaves the old name.</summary>
+    private void DrawRenameRow(float rowY, float fieldWidth)
+    {
+        // For the game's own chat and map keys. The mod's hotkeys and the RTS camera go by
+        // ModTextFieldOpen, which BeginRename and EndRename hold.
+        InputFieldChecker.InsideInputField = true;
+
+        Event current = Event.current;
+        bool enter = current.type == EventType.KeyDown && current.keyCode is KeyCode.Return or KeyCode.KeypadEnter;
+        bool cancel = current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape;
+        if (enter || cancel)
+        {
+            current.Use();
+        }
+
+        GUI.SetNextControlName(PresetNameField);
+        renameText = GUI.TextField(new Rect(2f, rowY + 9f, fieldWidth, 28f), renameText, 40);
+        if (focusRenameField)
+        {
+            focusRenameField = false;
+            GUI.FocusControl(PresetNameField);
+        }
+
+        bool commit = enter
+            | GUI.Button(new Rect(fieldWidth + 6f, rowY, 60f, 46f), "OK", CommanderUiTheme.PrimaryButton);
+        cancel |= GUI.Button(new Rect(fieldWidth + PresetRowButtonWidth + 6f, rowY, 60f, 46f), "CANCEL", CommanderUiTheme.Button);
+        if (cancel || (commit && service.TryRenamePreset(renamingPreset!, renameText)))
+        {
+            EndRename();
+            GUI.FocusControl(null);
+        }
     }
 
     /// <summary>The expert tab: every set of hardpoints, what is on it and what it rules out.</summary>
@@ -128,12 +200,18 @@ internal sealed partial class CommanderAirCommandUi
         GUI.enabled = oldEnabled && openHardpointGroup < 0;
         if (GUI.Button(
             rect,
-            new GUIContent("SAVE AS PRESET", "Keeps this loadout on the PRESETS tab for good, named after what it carries."),
+            new GUIContent("SAVE AS PRESET", "Keeps this loadout on the PRESETS tab for good, then lets you name it."),
             CommanderUiTheme.Button))
         {
-            // Named after what it carries rather than typed: the RTS camera owns the keyboard while
-            // this window is up, so a text field here would eat the movement keys.
+            // Saving lands on the PRESETS tab with the new preset selected, or the saved one that
+            // already matches, so naming it happens there, on the same row RENAME uses. What it
+            // carries is the name until one is typed. A new preset is last, so bring its row in.
             service.TrySaveCurrentAsPreset(service.DescribeCurrentLoadout().ToUpperInvariant(), out string _);
+            if (!service.AdvancedLoadout && service.SelectedPresetIndex >= 0)
+            {
+                presetScroll = new Vector2(0f, service.SelectedPresetIndex * 52f);
+                BeginRename(service.Presets[service.SelectedPresetIndex]);
+            }
         }
 
         GUI.enabled = oldEnabled;

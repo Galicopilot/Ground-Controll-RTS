@@ -7,15 +7,21 @@ namespace GroundControlRts;
 
 internal static class CommanderShortcutInput
 {
+    /// <summary>A mod text field has the keyboard. The mod's own flag, because any live
+    /// <c>InputFieldChecker</c> writes <c>InsideInputField</c> false each Update, and an IMGUI field
+    /// can only set it back in OnGUI, after the hotkeys have read the frame.</summary>
+    internal static bool ModTextFieldOpen { get; set; }
+
     /// <summary>
     /// True while the player is typing, so no keyboard hotkey fires into a chat line.
-    /// <c>InputFieldChecker</c> only lives in the mission editor, so in a match chat is known by
-    /// the cursor flag <c>ChatBox</c> sets while open. The chat opens in <c>MessageUI.LateUpdate</c>,
+    /// <c>InputFieldChecker</c> only lives in the mission editor, so in a match chat is known by the
+    /// cursor flag <c>ChatBox</c> sets while open. The chat opens in <c>MessageUI.LateUpdate</c>,
     /// after every mod hotkey has read the frame, so the frame of the game's own "Open Chat" press
     /// (T by default, which is also AIR COMMAND) counts as typing too.
     /// </summary>
     internal static bool IsTyping =>
-        InputFieldChecker.InsideInputField
+        ModTextFieldOpen
+        || InputFieldChecker.InsideInputField
         || CursorManager.GetFlag(CursorFlags.Chat)
         || (ChatBox.ChatAllowed && ReInput.isReady && ReInput.players.GetPlayer(0).GetButtonDown("Open Chat"));
 

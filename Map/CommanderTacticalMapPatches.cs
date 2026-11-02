@@ -116,7 +116,7 @@ internal static class CommanderTacticalMapPatches
             // leaves it at zero: the map stops zooming while panning, which is raw input, still works.
             // The binding stays as the fallback for controllers.
             float wheel = Mathf.Clamp(Input.mouseScrollDelta.y, -3f, 3f);
-            float zoomAxis = (wheel != 0f ? wheel : CommanderGameInput.GetAxis("Zoom View")) * 0.05f;
+            float zoomAxis = (wheel != 0f ? wheel : CommanderGameInput.GetAxis("Zoom View")) * 0.05f * CommanderSettings.MapZoomSpeed;
             if (zoomAxis != 0f)
             {
                 map.SetZoomLevel(Mathf.Clamp(map.mapScaleCenter.transform.localScale.x * (zoomAxis + 1f), 1f, 40f));
@@ -326,6 +326,12 @@ internal static class CommanderTacticalMapPatches
             if (!CommanderGameInput.MapDown)
             {
                 return true;
+            }
+
+            // The base method's own InsideInputField check is too late and unreliable: see IsTyping.
+            if (CommanderShortcutInput.IsTyping)
+            {
+                return false;
             }
 
             if (CommanderAirCommandUi.Instance?.HandleMapKey() == true)

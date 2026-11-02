@@ -22,6 +22,7 @@ internal sealed class CommanderInputController
     private float lastClickAt;
     private bool suppressPrimaryRelease;
     private bool primaryPressOverUi;
+    private bool typedLastFrame;
     private string lastEatenBy = string.Empty;
     private int eatenInARow;
     private Rect eatenSpan;
@@ -164,7 +165,14 @@ internal sealed class CommanderInputController
 
         if (CommanderShortcutInput.IsDown(CommanderSettings.SecondaryAction))
         {
-            if (overMap)
+            if (IsOnlyDepotSelected())
+            {
+                if (overMap ? dynamicMap!.TryGetCursorCoordinates(out GlobalPosition rallyPoint) : CommanderGameAccess.TryRaycastWorldPosition(mousePosition, out rallyPoint))
+                {
+                    spawnService.SetRallyPoint(rallyPoint);
+                }
+            }
+            else if (overMap)
             {
                 HandleMapOrder(dynamicMap!);
             }
@@ -215,7 +223,12 @@ internal sealed class CommanderInputController
 
     private void TickKeyboardOrders()
     {
-        if (CommanderShortcutInput.IsTyping)
+        // Enter also sends a chat line and ends a preset rename, and either can finish before this
+        // runs, so the frame after typing still counts as typing for the buy key.
+        bool typing = CommanderShortcutInput.IsTyping;
+        bool wasTyping = typedLastFrame;
+        typedLastFrame = typing;
+        if (typing)
         {
             return;
         }
@@ -255,6 +268,10 @@ internal sealed class CommanderInputController
         }
 
         overlayUi.HandleWindowHotkeys();
+        if (!wasTyping)
+        {
+            overlayUi.HandleBuyKey();
+        }
     }
 
     /// <summary>The cancel key reads the cursor the way the build order does: map point over the map, else the world.</summary>
@@ -266,6 +283,15 @@ internal sealed class CommanderInputController
         {
             economyService.TryCancelBlueprintAt(point);
         }
+    }
+
+    /// <summary>A building cannot take an order, so a right click on its own sets its rally point.
+    /// A ship or vehicle that carries a depot still moves.</summary>
+    private bool IsOnlyDepotSelected()
+    {
+        return spawnService.SelectedDepot != null
+            && selectionService.SelectedUnits.Count == 1
+            && selectionService.SelectedUnits[0] is not (GroundVehicle or Ship);
     }
 
     private bool IsPlacementArmed()

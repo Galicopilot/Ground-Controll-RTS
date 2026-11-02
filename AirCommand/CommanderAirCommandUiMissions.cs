@@ -28,7 +28,8 @@ internal sealed partial class CommanderAirCommandUi
     internal static float AltitudeSlider(Rect rect, float altitude)
     {
         int notch = CommanderAirCommandService.AltitudeNotch(altitude);
-        int picked = Mathf.RoundToInt(GUI.HorizontalSlider(rect, notch, -1f, CommanderAirCommandService.MaxAltitudeNotch));
+        int picked = CommanderAirCommandService.AltitudeNotchAt(
+            GUI.HorizontalSlider(rect, CommanderAirCommandService.AltitudeSliderPosition(notch), 0f, 1f));
         return (picked - notch) * CommanderAirCommandService.TargetAltitudeStepMeters;
     }
 
@@ -111,7 +112,7 @@ internal sealed partial class CommanderAirCommandUi
             Aircraft aircraft = missionAircraft[i];
             float rowY = 2f + (i * 58f);
             if (GUI.Button(
-                new Rect(2f, rowY, inner.width - 134f, 52f),
+                new Rect(2f, rowY, inner.width - 204f, 52f),
                 service.GetMissionAircraftLabel(aircraft),
                 service.IsMissionAircraftSelected(aircraft) ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
             {
@@ -120,7 +121,7 @@ internal sealed partial class CommanderAirCommandUi
 
             GUI.enabled = oldEnabled && !service.AwaitingAreaSelection;
             if (GUI.Button(
-                new Rect(inner.width - 128f, rowY, 50f, 52f),
+                new Rect(inner.width - 198f, rowY, 50f, 52f),
                 new GUIContent("AREA", "Click a new centre for this aircraft's mission area."),
                 CommanderUiTheme.Button))
             {
@@ -129,11 +130,19 @@ internal sealed partial class CommanderAirCommandUi
 
             // Same name as the selection bar's button for the same order: land, refuel, rearm, go back out.
             if (GUI.Button(
-                new Rect(inner.width - 74f, rowY, 72f, 52f),
+                new Rect(inner.width - 144f, rowY, 72f, 52f),
                 new GUIContent("RESUPPLY", "Lands at the nearest field you hold, refuels and rearms from its depots, then flies back to this mission."),
                 CommanderUiTheme.Button))
             {
                 service.RequestReturnToBase(aircraft);
+            }
+
+            if (GUI.Button(
+                new Rect(inner.width - 68f, rowY, 66f, 52f),
+                new GUIContent("RESERVE", "Lands at the nearest field you hold, where the crew ejects and the aircraft goes back into reserve, ready to launch again."),
+                CommanderUiTheme.Button))
+            {
+                service.ReserveAircraft(aircraft);
             }
 
             GUI.enabled = oldEnabled;

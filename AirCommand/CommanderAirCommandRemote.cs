@@ -140,6 +140,7 @@ internal sealed partial class CommanderAirCommandService
             }
         }));
         CommanderNetwork.OnHost("air.resupply", (hq, args) => HostOrder(hq, args, aircraft => ResupplyAircraft(aircraft)));
+        CommanderNetwork.OnHost("air.reserve", (hq, args) => HostOrder(hq, args, aircraft => ReserveAircraft(aircraft)));
         CommanderNetwork.OnHost("air.rtb", (hq, args) => HostOrder(hq, args, RequestReturnToBase));
         CommanderNetwork.OnHost("air.radius", (hq, args) => HostOrder(
             hq,

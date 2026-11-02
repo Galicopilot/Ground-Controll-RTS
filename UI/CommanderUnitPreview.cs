@@ -361,24 +361,7 @@ internal static class CommanderUnitPreview
             return cached;
         }
 
-        // Only the most detailed LOD: the others are the same model again.
-        HashSet<Renderer> lowDetail = new();
-        LODGroup[] groups = prefab.GetComponentsInChildren<LODGroup>(true);
-        for (int i = 0; i < groups.Length; i++)
-        {
-            LOD[] levels = groups[i].GetLODs();
-            for (int level = 1; level < levels.Length; level++)
-            {
-                foreach (Renderer renderer in levels[level].renderers)
-                {
-                    if (renderer != null)
-                    {
-                        lowDetail.Add(renderer);
-                    }
-                }
-            }
-        }
-
+        HashSet<Renderer> lowDetail = CommanderBuildPreview.CollectLowDetail(prefab);
         Transform root = prefab.transform;
         Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < renderers.Length; i++)

@@ -13,14 +13,15 @@ internal sealed class CommanderEconomyUi
     private const int WindowId = 0x434F4D42;
     private const float RowHeight = 50f;
     private const float FooterHeight = 62f;
-    private const float CardHeight = 138f;
-    private const float CardGap = 6f;
+    private const float CardGap = CommanderUiTheme.CardGap;
     private const string IncomeNote = "Each income building pays for as long as it stands, so each is worth defending. "
         + "Upgrade the ones you own from MANAGE, or by clicking them.";
 
     private const float LedgerLineHeight = 22f;
 
     private static readonly string[] ProductCategories = { "GROUND VEHICLES", "AIRCRAFT", "NAVAL" };
+
+    private static readonly Vector2 MinSize = new(420f, 480f);
 
     /// <summary>
     /// The economy sheet's height: its section header, the income and upkeep lines with a caption
@@ -69,6 +70,8 @@ internal sealed class CommanderEconomyUi
 
     internal bool Visible { get; private set; }
 
+    private static Vector2 DefaultSize => new(Mathf.Min(560f, CommanderUiScale.Width - 24f), Mathf.Min(760f, CommanderUiScale.Height - 64f));
+
     internal void Toggle()
     {
         Visible = !Visible;
@@ -91,6 +94,7 @@ internal sealed class CommanderEconomyUi
         }
 
         EnsurePosition();
+        windowRect.size = CommanderWindowScale.Size(WindowId, DefaultSize, MinSize);
         windowRect = CommanderWindowScale.Clamp(WindowId, windowRect);
         windowRect = CommanderWindowScale.Window(WindowId, windowRect, DrawWindow, "BUILD");
     }
@@ -303,12 +307,13 @@ internal sealed class CommanderEconomyUi
         int incomeCount = CommanderEconomyService.IncomeKinds.Count;
         float width = windowRect.width - 24f;
         float incomeWidth = (width - (CardGap * (incomeCount - 1))) / incomeCount;
+        float incomeHeight = CommanderUiTheme.CardHeight(incomeWidth);
         for (int i = 0; i < incomeCount; i++)
         {
             CommanderBuildKind kind = CommanderEconomyService.IncomeKinds[i];
             float cost = CommanderEconomyService.GetBuildCost(kind);
             DrawBuildCard(
-                new Rect(12f + (i * (incomeWidth + CardGap)), y, incomeWidth, CardHeight),
+                new Rect(12f + (i * (incomeWidth + CardGap)), y, incomeWidth, incomeHeight),
                 kind,
                 CommanderEconomyService.GetIncomeName(kind),
                 CommanderEconomyService.FundsLabel(cost),
@@ -317,7 +322,7 @@ internal sealed class CommanderEconomyUi
                 cost);
         }
 
-        y += CardHeight + CardGap;
+        y += incomeHeight + CardGap;
         GUI.Label(new Rect(12f, y, width, 60f), IncomeNote, CommanderUiTheme.MutedLabel);
     }
 
@@ -326,11 +331,12 @@ internal sealed class CommanderEconomyUi
         float width = windowRect.width - 24f;
         UnitDefinition? production = service.SelectedProduction;
         float half = (width - CardGap) * 0.5f;
+        float cardHeight = CommanderUiTheme.CardHeight(half);
 
         // The price follows what the plant will build: a tank line costs more than a light one.
         float factoryCost = CommanderEconomyService.GetFactoryBuildCost(production);
         DrawBuildCard(
-            new Rect(12f, y, half, CardHeight),
+            new Rect(12f, y, half, cardHeight),
             CommanderBuildKind.Factory,
             production != null ? $"{CommanderGameAccess.GetVehicleLabel(production)} factory" : "Factory",
             CommanderEconomyService.FundsLabel(factoryCost),
@@ -338,14 +344,14 @@ internal sealed class CommanderEconomyUi
             funds,
             factoryCost);
         DrawBuildCard(
-            new Rect(12f + half + CardGap, y, half, CardHeight),
+            new Rect(12f + half + CardGap, y, half, cardHeight),
             CommanderBuildKind.NavalDock,
             "Naval dock",
             CommanderEconomyService.FundsLabel(CommanderEconomyService.NavalDockBuildCost),
             "ON THE SHORE",
             funds,
             CommanderEconomyService.NavalDockBuildCost);
-        y += CardHeight + CardGap;
+        y += cardHeight + CardGap;
 
         bool oldEnabled = GUI.enabled;
         GUI.Label(new Rect(12f, y + 4f, 150f, 20f), "FACTORY MAKES", CommanderUiTheme.Caption);
@@ -728,30 +734,31 @@ internal sealed class CommanderEconomyUi
             return;
         }
 
-        // Two cards a row, the factory and dock cards' size, under a header per category. The
-        // height walk is the drawing walk without the drawing.
+        // As many cards a row as the window fits, under a header per category. The height walk is
+        // the drawing walk without the drawing. The width is BeginList's view less its 4 px margins.
         const float headerHeight = 30f;
+        float cardWidth = CommanderUiTheme.CardWidth(windowRect.width - 54f, out int columns);
+        float cardHeight = CommanderUiTheme.CardHeight(cardWidth);
         float contentHeight = 4f;
         int column = 0;
         for (int i = 0; i < shownCatalog.Count; i++)
         {
             if (i == 0 || shownCatalog[i].buildingType != shownCatalog[i - 1].buildingType)
             {
-                contentHeight += (column > 0 ? CardHeight + CardGap : 0f) + headerHeight;
+                contentHeight += (column > 0 ? cardHeight + CardGap : 0f) + headerHeight;
                 column = 0;
             }
 
-            column = (column + 1) % 2;
+            column = (column + 1) % columns;
             if (column == 0)
             {
-                contentHeight += CardHeight + CardGap;
+                contentHeight += cardHeight + CardGap;
             }
         }
 
-        contentHeight += column > 0 ? CardHeight + CardGap : 0f;
+        contentHeight += column > 0 ? cardHeight + CardGap : 0f;
 
         Rect viewRect = BeginList(y, contentHeight);
-        float cardWidth = (viewRect.width - 8f - CardGap) * 0.5f;
         float rowY = 4f;
         column = 0;
         for (int i = 0; i < shownCatalog.Count; i++)
@@ -759,7 +766,7 @@ internal sealed class CommanderEconomyUi
             BuildingDefinition definition = shownCatalog[i];
             if (i == 0 || definition.buildingType != shownCatalog[i - 1].buildingType)
             {
-                rowY += column > 0 ? CardHeight + CardGap : 0f;
+                rowY += column > 0 ? cardHeight + CardGap : 0f;
                 column = 0;
                 CommanderUiTheme.DrawSection(
                     new Rect(8f, rowY + 6f, viewRect.width - 16f, 20f),
@@ -767,11 +774,11 @@ internal sealed class CommanderEconomyUi
                 rowY += headerHeight;
             }
 
-            DrawStructureCard(new Rect(4f + (column * (cardWidth + CardGap)), rowY, cardWidth, CardHeight), definition, funds);
-            column = (column + 1) % 2;
+            DrawStructureCard(new Rect(4f + (column * (cardWidth + CardGap)), rowY, cardWidth, cardHeight), definition, funds);
+            column = (column + 1) % columns;
             if (column == 0)
             {
-                rowY += CardHeight + CardGap;
+                rowY += cardHeight + CardGap;
             }
         }
 
@@ -901,9 +908,8 @@ internal sealed class CommanderEconomyUi
             return;
         }
 
-        float width = Mathf.Min(560f, CommanderUiScale.Width - 24f);
-        float height = Mathf.Min(760f, CommanderUiScale.Height - 64f);
-        windowRect = new Rect(12f, 52f, width, height);
+        Vector2 size = CommanderWindowScale.Size(WindowId, DefaultSize, MinSize);
+        windowRect = new Rect(12f, 52f, size.x, size.y);
         positionInitialized = true;
     }
 }

@@ -104,6 +104,12 @@ internal static class CommanderSettings
     // A new key since the UI went to native scale: zooms saved against the old 2/3 base were too big.
     internal static string WindowScales { get => Get("UI", "WindowZoom", string.Empty); set => Set("UI", "WindowZoom", value); }
 
+    // One-time reset of AIR COMMAND's saved zoom. See CommanderWindowScale.Load.
+    internal static bool AirWindowZoomCleared { get => Get("UI", "AirWindowZoomCleared", false); set => Set("UI", "AirWindowZoomCleared", value); }
+
+    // Dragged window edges and section bars, "id:slot=size;...". See CommanderWindowScale.
+    internal static string WindowSizes { get => Get("UI", "WindowSizes", string.Empty); set => Set("UI", "WindowSizes", value); }
+
     // A new key since the UI went to native scale (was UI/TacticalMapSize, in 2/3-scale units).
     internal static float TacticalMapSize { get => Get("UI", "TacticalMapPixels", 540f); set => Set("UI", "TacticalMapPixels", value); }
 
@@ -111,6 +117,8 @@ internal static class CommanderSettings
     // cursor pixels against the map's on-screen scale, so 1.0 means the map sticks to the cursor.
     // A rename is the only way to reissue a default, since BepInEx keeps whatever is in the file.
     internal static float MapDragSpeed { get => Get("UI", "MapDragSpeed", 1f); set => Set("UI", "MapDragSpeed", value); }
+
+    internal static float MapZoomSpeed { get => Get("UI", "MapZoomSpeed", 1f); set => Set("UI", "MapZoomSpeed", value); }
 
     internal static bool AutoFollowSelection { get => Get("Camera", "AutoFollowSelection", false); set => Set("Camera", "AutoFollowSelection", value); }
 
@@ -357,6 +365,14 @@ internal static class CommanderSettings
 
     internal static KeyboardShortcut OpenOrderOfBattle { get => GetShortcut("OpenOrderOfBattle", KeyCode.O, "Open or close the ORDER OF BATTLE window."); set => Set("Keybinds", "OpenOrderOfBattle", value); }
 
+    internal static KeyboardShortcut ToggleTacticalMap { get => GetShortcut("ToggleTacticalMap", KeyCode.J, "Open or close the tactical map."); set => Set("Keybinds", "ToggleTacticalMap", value); }
+
+    internal static KeyboardShortcut GameSpeed1 { get => GetShortcut("GameSpeed1", KeyCode.F5, "Set the game speed to 1x (host only)."); set => Set("Keybinds", "GameSpeed1", value); }
+
+    internal static KeyboardShortcut GameSpeed2 { get => GetShortcut("GameSpeed2", KeyCode.F6, "Set the game speed to 2x (host only)."); set => Set("Keybinds", "GameSpeed2", value); }
+
+    internal static KeyboardShortcut GameSpeed4 { get => GetShortcut("GameSpeed4", KeyCode.F7, "Set the game speed to 4x (host only)."); set => Set("Keybinds", "GameSpeed4", value); }
+
     internal static KeyboardShortcut CameraCenterFollow { get => GetShortcut("CameraCenterFollow", KeyCode.Space, "Tap to center; hold to center and follow."); set => Set("Keybinds", "CameraCenterFollow", value); }
 
     internal static KeyboardShortcut ToggleCommander { get => GetShortcut("ToggleCommander", KeyCode.F8, "Enter or leave the Commander view, also while flying; your aircraft holds its course meanwhile."); set => Set("Keybinds", "ToggleCommander", value); }
@@ -453,6 +469,10 @@ internal static class CommanderSettings
         _ = OpenAirCommand;
         _ = OpenNaval;
         _ = OpenOrderOfBattle;
+        _ = ToggleTacticalMap;
+        _ = GameSpeed1;
+        _ = GameSpeed2;
+        _ = GameSpeed4;
         _ = CameraCenterFollow;
         _ = ToggleCommander;
         _ = ToggleUi;
@@ -496,6 +516,7 @@ internal static class CommanderSettings
         _ = ForceGodDifficulty;
         _ = TacticalMapSize;
         _ = MapDragSpeed;
+        _ = MapZoomSpeed;
         _ = AutoFrameSelection;
         _ = CameraPanSpeed;
         _ = CameraZoomSpeed;

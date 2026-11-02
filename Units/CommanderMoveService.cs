@@ -493,6 +493,25 @@ internal sealed class CommanderMoveService : ICommanderTickPersistent, ICommande
         return sent;
     }
 
+    /// <summary>Lands every aircraft in the selection at the nearest held field and stocks it.</summary>
+    internal void ReserveSelectedAircraft()
+    {
+        CommanderAirCommandService? airCommand = CommanderAirCommandService.Instance;
+        if (airCommand == null)
+        {
+            return;
+        }
+
+        IReadOnlyList<Unit> selection = selectionService.SelectedUnits;
+        for (int i = 0; i < selection.Count; i++)
+        {
+            if (selection[i] is Aircraft aircraft)
+            {
+                airCommand.ReserveAircraft(aircraft);
+            }
+        }
+    }
+
     /// <summary>
     /// Escort order: the selection follows <paramref name="guardTarget"/> in formation and
     /// engages whatever shoots at it, using the same re-tracking as an attack order.

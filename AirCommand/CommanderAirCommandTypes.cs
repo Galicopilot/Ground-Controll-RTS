@@ -49,6 +49,9 @@ internal sealed partial class CommanderAirCommandService
         /// <summary>Sit on the deck doing nothing until the player gives an order. Not serviced,
         /// grants no capture strength — <c>PilotParkedState</c> and the brakes, and that is all.</summary>
         Hold,
+
+        /// <summary>Land at a field the faction holds and eject: the airframe goes back into stock.</summary>
+        Reserve,
     }
 
     internal sealed class AirMissionOption

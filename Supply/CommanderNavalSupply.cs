@@ -70,22 +70,25 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         bool purchased = false;
-        if (hq!.GetUnitSupply(aircraft.Definition) <= 0)
+        float cargoCost = Mathf.Max(aircraft.HardpointSets[slot!.HardpointIndex].hardpoints?.Count ?? 0, 1) * GetMountCargoCost(mount!);
+        bool fromStock = hq!.GetUnitSupply(aircraft.Definition) > 0;
+        if (hq.factionFunds < cargoCost + (fromStock ? 0f : CommanderEconomyService.PriceOf(aircraft.Definition)))
+        {
+            NavalSupplyFailed("The faction cannot afford the naval-supply aircraft and its cargo.");
+            return;
+        }
+
+        hq.AddFunds(-cargoCost);
+        if (!fromStock)
         {
             float cost = CommanderEconomyService.PriceOf(aircraft.Definition);
-            if (hq.factionFunds < cost)
-            {
-                NavalSupplyFailed("The faction cannot afford the naval-supply aircraft.");
-                return;
-            }
-
             hq.AddFunds(-cost);
             hq.ModifyUnitSupply(aircraft.Definition, 1);
             purchased = true;
         }
 
         Loadout loadout = CreateEmptyLoadout(aircraft.HardpointSets.Length);
-        PlaceCargoAndClearNonCargo(loadout, aircraft.HardpointSets, slot!.HardpointIndex, mount!);
+        PlaceCargoAndClearNonCargo(loadout, aircraft.HardpointSets, slot.HardpointIndex, mount!);
         pendingAircraftSpawn = new PendingAircraftSpawn(
             hq,
             aircraft.Definition,
@@ -118,6 +121,7 @@ internal sealed partial class CommanderSupplyHeliService
                 hq.AddFunds(CommanderEconomyService.PriceOf(aircraft.Definition));
             }
 
+            hq.AddFunds(cargoCost);
             NavalSupplyFailed("The nearest compatible airfield rejected the naval-supply spawn.");
             return;
         }

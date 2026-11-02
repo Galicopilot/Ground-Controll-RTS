@@ -15,6 +15,13 @@ internal sealed class CommanderDepotUi
     private const int MaxTeamLines = 4;
     private const float TeamLineHeight = 18f;
 
+    private const int DetailSlot = 2;
+    private const int QueueSlot = 3;
+    private const float DefaultQueueHeight = 78f;
+    private const float DefaultDetailWidth = 214f;
+
+    private static readonly Vector2 MinSize = new(480f, 500f);
+
     private static GUIStyle? rightCaption;
     private static GUIStyle? rightLabel;
     private static GUIStyle? descriptionStyle;
@@ -109,20 +116,30 @@ internal sealed class CommanderDepotUi
             Visible = false;
         }
 
-        float width = Mathf.Min(640f, CommanderUiScale.Width - 24f);
-        float height = Mathf.Min(720f, CommanderUiScale.Height - 64f);
+        Vector2 size = CommanderWindowScale.Size(
+            WindowId,
+            new Vector2(Mathf.Min(640f, CommanderUiScale.Width - 24f), Mathf.Min(720f, CommanderUiScale.Height - 64f)),
+            MinSize);
         if (!positionInitialized)
         {
-            windowRect = new Rect(12f, 52f, width, height);
+            windowRect = new Rect(12f, 52f, size.x, size.y);
             positionInitialized = true;
         }
         else
         {
-            windowRect.width = width;
-            windowRect.height = height;
+            windowRect.size = size;
         }
 
         windowRect = CommanderWindowScale.Clamp(WindowId, windowRect);
+    }
+
+    /// <summary>Enter queues the vehicle in the detail panel: the one hovered, or last clicked.</summary>
+    internal void PressBuy()
+    {
+        if (Visible && detailDefinition != null)
+        {
+            spawnService.QueueVehicle(detailDefinition);
+        }
     }
 
     internal bool ContainsScreenPoint(Vector2 screenPoint)
@@ -179,7 +196,7 @@ internal sealed class CommanderDepotUi
         {
             string help = CommanderDraftService.IsDraftMission
                 ? "DRAFT: nothing is for sale. The cards are what is left of the army you drafted; the battle queued all of it across your depots when it started. Click a vehicle to roll another one out of this depot. CLEAR keeps the queued units in reserve instead, to send out later. New units wait beside the depot until ordered, or go to the rally point you set."
-                : $"Click a vehicle to queue it at this depot; the queue at the bottom shows what is waiting. Each unit takes a build time, longer for better units (up to 3 minutes), counted down on the first picture. Each unit costs its price and also draws the fuel and ammo shown beside its picture from the depots within {CommanderSettings.SupplyStoreRangeKm:0} km, so buy supply first. New units wait beside the depot until ordered, or go to the rally point you set. A dimmed card needs this depot upgraded to that level first: select the depot and press UPGRADE DEPOT. REINFORCE puts every unit this depot builds straight into that control group. CLEAR empties the queue, which is the way out of a queue whose head is waiting on funds or on enriched uranium.";
+                : $"Click a vehicle to queue it at this depot; the queue at the bottom shows what is waiting. Each unit takes a build time, longer for better units (up to 3 minutes), counted down on the first picture. Each unit costs its price and also draws the fuel and ammo shown beside its picture from the depots within {CommanderSettings.SupplyStoreRangeKm:0} km, so buy supply first. New units wait beside the depot until ordered, or go to the rally point you set: SET RALLY, or right-click with the depot selected. A dimmed card needs this depot upgraded to that level first: select the depot and press UPGRADE DEPOT. REINFORCE puts every unit this depot builds straight into that control group. CLEAR empties the queue, which is the way out of a queue whose head is waiting on funds or on enriched uranium.";
             y = 36f + CommanderUiTheme.DrawHelpOverlay(new Rect(12f, 36f, windowRect.width - 24f, 92f), help) + 10f;
         }
 
@@ -203,7 +220,7 @@ internal sealed class CommanderDepotUi
         y += 24f;
 
         float third = (windowRect.width - 24f - 8f) / 3f;
-        if (GUI.Button(new Rect(12f, y, third, 28f), new GUIContent("SET RALLY", "Click, then click where this depot's new units should gather."), CommanderUiTheme.Button))
+        if (GUI.Button(new Rect(12f, y, third, 28f), new GUIContent("SET RALLY", "Click, then click where this depot's new units should gather. A right click with the depot selected does the same."), CommanderUiTheme.Button))
         {
             spawnService.BeginRallyPointSelection();
         }
@@ -233,16 +250,23 @@ internal sealed class CommanderDepotUi
         y = DrawCategories(y);
         y += 6f;
 
-        const float queueHeight = 78f;
-        const float detailWidth = 214f;
+        float detailWidth = CommanderWindowScale.Section(WindowId, DetailSlot, DefaultDetailWidth, 160f, windowRect.width - 200f);
         float statusHeight = string.IsNullOrWhiteSpace(spawnService.StatusText) ? 0f : 24f;
         List<string>? teamLines = CommanderTeamQueueService.Instance?.Lines;
         int teamRows = Mathf.Min(teamLines?.Count ?? 0, MaxTeamLines);
         float teamHeight = teamRows > 0 ? 28f + (teamRows * TeamLineHeight) : 0f;
+
+        // The queue bar trades with the vehicle list, so a drag never pushes the rows below it out.
+        float maxQueue = Mathf.Max(DefaultQueueHeight, windowRect.height - y - teamHeight - statusHeight - 16f - 120f);
+        float queueHeight = CommanderWindowScale.Section(WindowId, QueueSlot, DefaultQueueHeight, DefaultQueueHeight, maxQueue);
         float listHeight = Mathf.Max(120f, windowRect.height - y - queueHeight - teamHeight - statusHeight - 16f);
         DrawVehicleList(new Rect(12f, y, windowRect.width - 24f - detailWidth - 8f, listHeight));
         DrawDetail(new Rect(windowRect.width - 12f - detailWidth, y, detailWidth, listHeight));
+        CommanderWindowScale.Splitter(
+            WindowId, DetailSlot, new Rect(windowRect.width - 20f - detailWidth, y, 8f, listHeight), alongX: true, inverted: true, detailWidth, 160f, windowRect.width - 200f);
         y += listHeight + 8f;
+        CommanderWindowScale.Splitter(
+            WindowId, QueueSlot, new Rect(12f, y - 8f, windowRect.width - 24f, 8f), alongX: false, inverted: true, queueHeight, DefaultQueueHeight, maxQueue);
         DrawQueue(new Rect(12f, y, windowRect.width - 24f, queueHeight - 8f));
         if (teamRows > 0)
         {
@@ -297,11 +321,10 @@ internal sealed class CommanderDepotUi
     private void DrawVehicleList(Rect view)
     {
         List<VehicleDefinition> vehicles = spawnService.GetFilteredVehicleDefinitions(selectedCategory);
-        const float gap = 6f;
-        const float cardHeight = 124f;
+        const float gap = CommanderUiTheme.CardGap;
         float innerWidth = view.width - 14f;
-        int columns = Mathf.Max(1, Mathf.FloorToInt((innerWidth + gap) / (150f + gap)));
-        float cardWidth = (innerWidth - (gap * (columns - 1))) / columns;
+        float cardWidth = CommanderUiTheme.CardWidth(innerWidth, out int columns);
+        float cardHeight = CommanderUiTheme.CardHeight(cardWidth);
         int rows = (vehicles.Count + columns - 1) / columns;
         Rect inner = new(0f, 0f, innerWidth, Mathf.Max(view.height, (rows * (cardHeight + gap)) - gap));
         vehicleScroll = GUI.BeginScrollView(view, vehicleScroll, inner);
@@ -355,7 +378,7 @@ internal sealed class CommanderDepotUi
             return;
         }
 
-        Rect model = new(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.width * 0.8f);
+        Rect model = new(rect.x + 1f, rect.y + 1f, rect.width - 2f, Mathf.Min(rect.width * 0.8f, rect.height - 60f));
         CommanderUnitPreview.DrawLive(model, definition, 1);
         float y = model.yMax + 4f;
         float x = rect.x + 10f;

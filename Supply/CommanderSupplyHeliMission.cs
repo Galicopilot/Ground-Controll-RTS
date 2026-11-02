@@ -1014,7 +1014,7 @@ internal sealed partial class CommanderSupplyHeliService
         CargoAircraftOption aircraftOption = request.Aircraft;
 
         // The cargo is paid on every launch, stocked airframe or not, like an AIR launch's munitions.
-        float cargoCost = GetCargoCost(aircraftOption.Definition, request.Loadout);
+        float cargoCost = IsSamSiteRun(request.SupportSummary) ? 0f : GetCargoCost(aircraftOption.Definition, request.Loadout);
         bool fromStock = hq.GetUnitSupply(aircraftOption.Definition) > 0;
         float airframeCost = fromStock ? 0f : CommanderEconomyService.PriceOf(aircraftOption.Definition);
         if (hq.factionFunds < airframeCost + cargoCost)

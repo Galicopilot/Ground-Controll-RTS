@@ -214,8 +214,15 @@ internal sealed partial class CommanderAirCommandService
     {
         if (Instance == null
             || Instance.missions.Count == 0
-            || pilot == null
-            || state is not AIHeloTransportState)
+            || pilot == null)
+        {
+            return false;
+        }
+
+        // A modded fixed-wing transport is refused even on a cargo run: Air Command steers that run
+        // and the mod's state would fly its own delivery instead of the player's LZ.
+        bool moddedTransport = IsModdedTransportState(state);
+        if (!moddedTransport && state is not AIHeloTransportState)
         {
             return false;
         }
@@ -223,7 +230,7 @@ internal sealed partial class CommanderAirCommandService
         Aircraft? aircraft = pilot.aircraft;
         return aircraft != null
             && Instance.missions.ContainsKey(aircraft)
-            && CommanderSupplyHeliService.Instance?.IsCargoRunAircraft(aircraft) != true;
+            && (moddedTransport || CommanderSupplyHeliService.Instance?.IsCargoRunAircraft(aircraft) != true);
     }
 
     internal static bool TryBuildAradSaturationTargets(
@@ -896,6 +903,15 @@ internal sealed partial class CommanderAirCommandService
             || StepAltitude(TargetAltitudeStepMeters, -250f) != 0f)
         {
             failed = true;
+        }
+
+        // An untouched slider must read back its own notch, or drawing it would change the altitude.
+        for (int notch = -1; notch <= MaxAltitudeNotch; notch++)
+        {
+            if (AltitudeNotchAt(AltitudeSliderPosition(notch)) != notch)
+            {
+                failed = true;
+            }
         }
 
         // A cruise climb is the same pitch at any distance: a far point must not flatten it out.
@@ -1747,7 +1763,8 @@ internal sealed partial class CommanderAirCommandService
     private void HandleAircraftReturned(Aircraft aircraft)
     {
         if (missions.TryGetValue(aircraft, out AirMission mission)
-            && mission.PurchasedWithFunds)
+            && mission.PurchasedWithFunds
+            && mission.Intent != LandingIntent.Reserve)
         {
             // Basegame ReturnToInventory has just restored one airframe. Convert
             // that temporary purchased airframe back into its original funds.

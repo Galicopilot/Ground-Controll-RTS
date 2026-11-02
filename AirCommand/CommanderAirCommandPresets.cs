@@ -28,6 +28,7 @@ namespace GroundControlRts;
 internal sealed partial class CommanderAirCommandService
 {
     private static readonly char[] PresetLineSeparator = { '\n' };
+    private static readonly char[] PresetNameBreaks = { '\t', '\n', '\r' };
 
     private readonly List<LoadoutPreset> presets = new();
     private readonly List<LoadoutPreset> customPresets = new();
@@ -121,10 +122,14 @@ internal sealed partial class CommanderAirCommandService
             {
                 DefinitionKey = "Ifrit",
             },
+            new LoadoutPreset(CleanPresetName(" PASTED\tNAME\r\n"), new List<string> { "ms3" }, custom: true)
+            {
+                DefinitionKey = "Ifrit",
+            },
         };
 
         List<LoadoutPreset> parsed = ParsePresets(SerializePresets(saved));
-        bool failed = parsed.Count != saved.Count;
+        bool failed = parsed.Count != saved.Count || saved[2].Name != "PASTED NAME";
         for (int i = 0; !failed && i < saved.Count; i++)
         {
             failed = parsed[i].DefinitionKey != saved[i].DefinitionKey
@@ -200,6 +205,38 @@ internal sealed partial class CommanderAirCommandService
         presetChosenByPlayer |= saved;
         SetStatus(message);
         return saved;
+    }
+
+    internal bool HasPreset(LoadoutPreset preset)
+    {
+        return presets.Contains(preset);
+    }
+
+    /// <summary>Renames a saved preset for good, and says on the status line whether it did.</summary>
+    internal bool TryRenamePreset(LoadoutPreset preset, string name)
+    {
+        name = CleanPresetName(name);
+        if (name.Length == 0)
+        {
+            SetStatus("Give the preset a name first.");
+            return false;
+        }
+
+        // AddPreset skips a repeated name, so a duplicate here would drop this preset off the list.
+        for (int i = 0; i < presets.Count; i++)
+        {
+            if (!ReferenceEquals(presets[i], preset)
+                && string.Equals(presets[i].Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                SetStatus($"Already a preset: {presets[i].Name}.");
+                return false;
+            }
+        }
+
+        preset.Name = name;
+        SaveCustomPresets();
+        SetStatus($"Preset renamed to \"{name}\".");
+        return true;
     }
 
     internal void DeletePreset(int index)
@@ -365,6 +402,12 @@ internal sealed partial class CommanderAirCommandService
             && info.effectiveness.antiSurface > 0.05f;
     }
 
+    /// <summary>A pasted name can hold the tab and newline the config line is split on.</summary>
+    private static string CleanPresetName(string name)
+    {
+        return string.Join(" ", name.Split(PresetNameBreaks, StringSplitOptions.RemoveEmptyEntries)).Trim();
+    }
+
     private static string GetDefinitionKey(AircraftDefinition definition)
     {
         return definition.name;
@@ -465,8 +508,11 @@ internal sealed partial class CommanderAirCommandService
 
         for (int i = 0; i < presets.Count; i++)
         {
-            if (presets[i].SameStores(saved))
+            // Only another saved one counts: a player may keep a built-in loadout under their own
+            // name, and refusing left them on PYLONS with no name field, typing into the hotkeys.
+            if (presets[i].Custom && presets[i].SameStores(saved))
             {
+                ChoosePreset(i);
                 message = $"Already a preset: {presets[i].Name}.";
                 return false;
             }
@@ -710,12 +756,14 @@ internal sealed partial class CommanderAirCommandService
         }
     }
 
-    /// <summary>Skips a preset that arms the aeroplane exactly like one already listed.</summary>
+    /// <summary>Skips a generated preset that arms the aeroplane exactly like one already listed,
+    /// and any preset whose name is taken.</summary>
     private void AddPreset(LoadoutPreset preset)
     {
         for (int i = 0; i < presets.Count; i++)
         {
-            if (presets[i].SameStores(preset) || string.Equals(presets[i].Name, preset.Name, StringComparison.OrdinalIgnoreCase))
+            if ((!preset.Custom && presets[i].SameStores(preset))
+                || string.Equals(presets[i].Name, preset.Name, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -755,7 +803,7 @@ internal sealed partial class CommanderAirCommandService
             Custom = custom;
         }
 
-        internal string Name { get; }
+        internal string Name { get; set; }
 
         internal List<string> MountKeys { get; }
 

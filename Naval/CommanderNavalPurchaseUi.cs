@@ -7,6 +7,12 @@ namespace GroundControlRts;
 internal sealed class CommanderNavalPurchaseUi
 {
     private const int WindowId = 0x434F4D4E;
+    private const int DetailSlot = 2;
+    private const int QueueSlot = 3;
+    private const float DefaultQueueHeight = 70f;
+    private const float DefaultDetailWidth = 214f;
+
+    private static readonly Vector2 MinSize = new(480f, 480f);
 
     private static GUIStyle? rightCaption;
     private static GUIStyle? rightLabel;
@@ -32,6 +38,8 @@ internal sealed class CommanderNavalPurchaseUi
     private static GUIStyle RightLabel => rightLabel ??= new GUIStyle(CommanderUiTheme.Label) { alignment = TextAnchor.MiddleRight, wordWrap = false };
 
     private static GUIStyle DescriptionStyle => descriptionStyle ??= new GUIStyle(CommanderUiTheme.MutedLabel) { alignment = TextAnchor.UpperLeft, clipping = TextClipping.Clip };
+
+    private static Vector2 DefaultSize => new(Mathf.Min(640f, CommanderUiScale.Width - 24f), Mathf.Min(680f, CommanderUiScale.Height - 64f));
 
     internal void Toggle()
     {
@@ -72,6 +80,17 @@ internal sealed class CommanderNavalPurchaseUi
         helpVisible = false;
     }
 
+    /// <summary>Enter on PURCHASE; false when this window is shut.</summary>
+    internal bool PressBuy()
+    {
+        if (Visible)
+        {
+            service.BeginPurchase();
+        }
+
+        return Visible;
+    }
+
     internal void Draw()
     {
         if (!Visible)
@@ -80,6 +99,7 @@ internal sealed class CommanderNavalPurchaseUi
         }
 
         EnsurePosition();
+        windowRect.size = CommanderWindowScale.Size(WindowId, DefaultSize, MinSize);
         windowRect = CommanderWindowScale.Clamp(WindowId, windowRect);
         windowRect = CommanderWindowScale.Window(WindowId, windowRect, DrawWindow, "NAVAL REINFORCEMENTS");
     }
@@ -151,29 +171,39 @@ internal sealed class CommanderNavalPurchaseUi
         GUI.Label(new Rect(12f, y, windowRect.width - 24f, 20f), unlocks, CommanderUiTheme.MutedLabel);
         y += 24f;
 
-        float third = (windowRect.width - 24f - 4f) / 3f;
-        GUI.Label(new Rect(12f, y + 4f, third, 20f), $"Rally: {service.GetRallyLabel()}", CommanderUiTheme.MutedLabel);
-        if (GUI.Button(new Rect(12f + third + 2f, y, third, 28f), new GUIContent("SET RALLY", "Click, then click the water where this dock's new ships should gather. Each one gets its own berth, spaced so they never collide."), CommanderUiTheme.Button))
+        // A row of its own: beside the buttons it wrapped and was cut off, as the depot's would be.
+        GUI.Label(new Rect(12f, y, windowRect.width - 24f, 20f), $"Rally: {service.GetRallyLabel()}", CommanderUiTheme.MutedLabel);
+        y += 24f;
+
+        float half = (windowRect.width - 24f - 4f) / 2f;
+        if (GUI.Button(new Rect(12f, y, half, 28f), new GUIContent("SET RALLY", "Click, then click the water where this dock's new ships should gather. Each one gets its own berth, spaced so they never collide."), CommanderUiTheme.Button))
         {
             service.BeginRallySelection();
         }
 
-        if (GUI.Button(new Rect(12f + (third * 2f) + 4f, y, third, 28f), new GUIContent("CLEAR RALLY", "New ships wait beside the dock."), CommanderUiTheme.Button))
+        if (GUI.Button(new Rect(16f + half, y, half, 28f), new GUIContent("CLEAR RALLY", "New ships wait beside the dock."), CommanderUiTheme.Button))
         {
             service.ClearRallyPoint();
         }
 
         y += 36f;
 
-        const float detailWidth = 214f;
+        float detailWidth = CommanderWindowScale.Section(WindowId, DetailSlot, DefaultDetailWidth, 160f, windowRect.width - 200f);
         const float footerHeight = 46f;
-        const float queueHeight = 70f;
         string status = service.StatusText;
         float statusHeight = string.IsNullOrWhiteSpace(status) ? 0f : 40f;
+
+        // The queue bar trades with the ship list, so a drag never pushes PURCHASE out.
+        float maxQueue = Mathf.Max(DefaultQueueHeight, windowRect.height - y - footerHeight - statusHeight - 12f - 120f);
+        float queueHeight = CommanderWindowScale.Section(WindowId, QueueSlot, DefaultQueueHeight, DefaultQueueHeight, maxQueue);
         float listHeight = Mathf.Max(120f, windowRect.height - y - footerHeight - queueHeight - statusHeight - 12f);
         DrawShipList(new Rect(12f, y, windowRect.width - 24f - detailWidth - 8f, listHeight), dockLevel);
         DrawDetail(new Rect(windowRect.width - 12f - detailWidth, y, detailWidth, listHeight), dockLevel);
+        CommanderWindowScale.Splitter(
+            WindowId, DetailSlot, new Rect(windowRect.width - 20f - detailWidth, y, 8f, listHeight), alongX: true, inverted: true, detailWidth, 160f, windowRect.width - 200f);
         y += listHeight + 8f;
+        CommanderWindowScale.Splitter(
+            WindowId, QueueSlot, new Rect(12f, y - 8f, windowRect.width - 24f, 8f), alongX: false, inverted: true, queueHeight, DefaultQueueHeight, maxQueue);
         DrawBuildQueue(new Rect(12f, y, windowRect.width - 24f, queueHeight - 8f));
         y += queueHeight;
 
@@ -250,11 +280,10 @@ internal sealed class CommanderNavalPurchaseUi
     private void DrawShipList(Rect view, int dockLevel)
     {
         IReadOnlyList<ShipDefinition> ships = service.ShipDefinitions;
-        const float gap = 6f;
-        const float cardHeight = 124f;
+        const float gap = CommanderUiTheme.CardGap;
         float innerWidth = view.width - 14f;
-        int columns = Mathf.Max(1, Mathf.FloorToInt((innerWidth + gap) / (150f + gap)));
-        float cardWidth = (innerWidth - (gap * (columns - 1))) / columns;
+        float cardWidth = CommanderUiTheme.CardWidth(innerWidth, out int columns);
+        float cardHeight = CommanderUiTheme.CardHeight(cardWidth);
         int rows = (ships.Count + columns - 1) / columns;
         Rect inner = new(0f, 0f, innerWidth, Mathf.Max(view.height, (rows * (cardHeight + gap)) - gap));
         scroll = GUI.BeginScrollView(view, scroll, inner);
@@ -308,7 +337,7 @@ internal sealed class CommanderNavalPurchaseUi
             return;
         }
 
-        Rect model = new(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.width * 0.8f);
+        Rect model = new(rect.x + 1f, rect.y + 1f, rect.width - 2f, Mathf.Min(rect.width * 0.8f, rect.height - 60f));
         CommanderUnitPreview.DrawLive(model, definition, 1);
         float y = model.yMax + 4f;
         float x = rect.x + 10f;
@@ -338,13 +367,8 @@ internal sealed class CommanderNavalPurchaseUi
             return;
         }
 
-        float width = Mathf.Min(640f, CommanderUiScale.Width - 24f);
-        float height = Mathf.Min(680f, CommanderUiScale.Height - 64f);
-        windowRect = new Rect(
-            74f,
-            Mathf.Max(12f, (CommanderUiScale.Height - height) * 0.5f),
-            width,
-            height);
+        Vector2 size = CommanderWindowScale.Size(WindowId, DefaultSize, MinSize);
+        windowRect = new Rect(74f, Mathf.Max(12f, (CommanderUiScale.Height - size.y) * 0.5f), size.x, size.y);
         positionInitialized = true;
     }
 }

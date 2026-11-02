@@ -12,6 +12,9 @@ namespace GroundControlRts;
 /// </summary>
 internal static class CommanderUiTheme
 {
+    internal const float CardGap = 6f;
+    private const float MinCardWidth = 150f;
+
     /// <summary>Fixed pixel rows at the top of the window texture: accent line, title band and its divider.</summary>
     private const int TitleBand = 28;
 
@@ -384,6 +387,21 @@ internal static class CommanderUiTheme
         GUI.color = fill;
         GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(fraction), rect.height), Texture2D.whiteTexture);
         GUI.color = previous;
+    }
+
+    /// <summary>The width of a card in a grid filling <paramref name="width"/>: as many columns as
+    /// fit at the smallest card, then shared out so the rows always reach both edges.</summary>
+    internal static float CardWidth(float width, out int columns)
+    {
+        columns = Mathf.Max(1, Mathf.FloorToInt((width + CardGap) / (MinCardWidth + CardGap)));
+        return (width - (CardGap * (columns - 1))) / columns;
+    }
+
+    /// <summary>A card's height follows its width, so a wider window gives bigger pictures and not
+    /// stretched cards. <see cref="DrawCard"/> keeps 42 of it for the name and price.</summary>
+    internal static float CardHeight(float cardWidth)
+    {
+        return Mathf.Clamp((cardWidth * 0.55f) + 42f, 124f, 200f);
     }
 
     /// <summary>

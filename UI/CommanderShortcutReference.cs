@@ -136,6 +136,10 @@ internal static class CommanderShortcutReference
             "Cancel placement",
             Key(CommanderSettings.SecondaryAction),
             "Backs out of an armed build, supply, area or trailer placement. Escape also works."));
+        buffer.Add(new Entry(
+            "Set depot rally point",
+            Key(CommanderSettings.SecondaryAction),
+            "With only a vehicle depot selected, in the world or on the map."));
 
         buffer.Add(Entry.Section("WINDOWS"));
         buffer.Add(new Entry("Build", Key(CommanderSettings.OpenBuild), "Opens or closes BUILD."));
@@ -143,8 +147,14 @@ internal static class CommanderShortcutReference
         buffer.Add(new Entry("Air Command", Key(CommanderSettings.OpenAirCommand), "Opens or closes AIR COMMAND."));
         buffer.Add(new Entry("Buy ships", Key(CommanderSettings.OpenNaval), "Needs a naval dock."));
         buffer.Add(new Entry("Order of Battle", Key(CommanderSettings.OpenOrderOfBattle), "Opens or closes the unit list."));
+        buffer.Add(new Entry("Tactical map", Key(CommanderSettings.ToggleTacticalMap), "Opens or closes the map window."));
+        buffer.Add(new Entry("Buy", "Enter", "Presses the buy button in a depot, the naval window, or AIR COMMAND when no area is needed."));
 
         buffer.Add(Entry.Section("INTERFACE"));
+        buffer.Add(new Entry(
+            "Game speed 1x / 2x / 4x",
+            Keys(CommanderSettings.GameSpeed1, CommanderSettings.GameSpeed2, CommanderSettings.GameSpeed4),
+            "Host only."));
         buffer.Add(new Entry("Night vision", Key(CommanderSettings.ToggleNightVision), "The game's own night vision."));
         buffer.Add(new Entry(
             "Cycle UI visibility",

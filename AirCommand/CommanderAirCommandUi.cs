@@ -17,8 +17,20 @@ namespace GroundControlRts;
 /// </remarks>
 internal sealed partial class CommanderAirCommandUi
 {
-    private const int WindowId = 0x434F4143;
+    internal const int WindowId = 0x434F4143;
     private const int MissionWindowId = 0x434F414D;
+    private const int AircraftSlot = 2;
+    private const int AirbaseSlot = 3;
+    private const int PreviewSlot = 4;
+    private const float MinAircraftHeight = (3 * 52f) + 4f;
+    private const float MinLoadoutHeight = 220f;
+    private const float MinAirbaseHeight = 76f;
+    private const float MaxSectionHeight = 900f;
+    private const float DefaultPreviewWidth = 230f;
+    private const float MinPreviewWidth = 140f;
+    private const float MinAircraftListWidth = 240f;
+
+    private static readonly Vector2 MinSize = new(560f, 420f);
 
     private readonly CommanderAirCommandService service;
     private readonly List<Aircraft> missionAircraft = new();
@@ -70,7 +82,11 @@ internal sealed partial class CommanderAirCommandUi
     // closed — at mission start there is nothing flying for it to list.
     internal bool MissionsVisible { get; private set; }
 
-    internal Rect WindowRect => windowRect;
+    /// <summary>Once the player has set a height or moved a bar, the window keeps its height and
+    /// the loadout box fills what is left. Sizing it to content as well would chase its own tail.</summary>
+    private static bool IsStretched => CommanderWindowScale.HasHeight(WindowId)
+        || CommanderWindowScale.Section(WindowId, AircraftSlot) > 0f
+        || CommanderWindowScale.Section(WindowId, AirbaseSlot) > 0f;
 
     internal void ShowMissions()
     {
@@ -117,6 +133,7 @@ internal sealed partial class CommanderAirCommandUi
         }
 
         Visible = false;
+        EndRename();
         service.SetUiVisible(false);
         service.SetHangarFilter(null);
 
@@ -147,6 +164,24 @@ internal sealed partial class CommanderAirCommandUi
         missionPositionInitialized = false;
     }
 
+    /// <summary>Enter on the buy button. A mission with an area to place is left to the mouse, and
+    /// false hands the key to the next open shop. While a dropdown or an area pick is open the key
+    /// goes nowhere, the same as the disabled button.</summary>
+    internal bool PressBuy()
+    {
+        if (!Visible || CommanderAirCommandService.RequiresMissionArea(service.SelectedMode))
+        {
+            return false;
+        }
+
+        if (openHardpointGroup < 0 && !service.AwaitingAreaSelection)
+        {
+            service.BeginAreaSelection();
+        }
+
+        return true;
+    }
+
     internal void Tick()
     {
         if (Visible && CommanderTacticalMapService.Instance?.IsOpen != true)
@@ -154,21 +189,23 @@ internal sealed partial class CommanderAirCommandUi
             openedMap |= CommanderTacticalMapService.Instance?.Open() == true;
         }
 
-        float width = Mathf.Min(760f, CommanderUiScale.Width - 390f);
-
         // The cap is in the window's own unscaled units, so shrinking the window with its grip
         // really does make room for the whole content; a screen-sized cap in those units left
         // LAUNCH clipped however small the player made it.
-        float height = Mathf.Min(Mathf.Max(760f, requiredHeight), (CommanderUiScale.Height - 60f) / CommanderWindowScale.Get(WindowId));
+        Vector2 size = CommanderWindowScale.Size(
+            WindowId,
+            new Vector2(
+                Mathf.Min(760f, CommanderUiScale.Width - 390f),
+                Mathf.Min(IsStretched ? 900f : Mathf.Max(760f, requiredHeight), (CommanderUiScale.Height - 60f) / CommanderWindowScale.Get(WindowId))),
+            MinSize);
         if (!positionInitialized)
         {
-            windowRect = new Rect(12f, 52f, width, height);
+            windowRect = new Rect(12f, 52f, size.x, size.y);
             positionInitialized = true;
         }
         else
         {
-            windowRect.width = width;
-            windowRect.height = height;
+            windowRect.size = size;
             windowRect = CommanderWindowScale.Clamp(WindowId, windowRect);
         }
 
@@ -326,30 +363,46 @@ internal sealed partial class CommanderAirCommandUi
         float missionBlock = 22f + 40f + (CommanderAirCommandService.IsAreaMode(service.SelectedMode) ? 40f : 0f)
             + (needsArea ? 46f : 0f) + (needsArea && service.SupportsTargetAltitude() ? 46f : 0f)
             + (needsArea && ShowsModeToggle() ? 38f : 0f);
-        float airbaseBlock = 22f + 84f;
         string warning = service.LaunchWarning;
         float warningHeight = warning.Length > 0
             ? CommanderUiTheme.WarningLabel.CalcHeight(new GUIContent(warning), contentWidth) + 4f
             : 0f;
         float footer = 24f + 42f + 38f + warningHeight;
         float headers = 22f + 8f + 22f + 30f + 8f;
-        float flexible = windowRect.height - y - missionBlock - airbaseBlock - footer - headers - 16f;
 
-        float loadoutHeight = Mathf.Clamp(flexible * 0.6f, 220f, 260f);
+        // All three stretching sections share this. Each bar trades with the loadout box, which
+        // takes whatever is left, so a drag moves space around and never pushes LAUNCH off the
+        // bottom; only the floors can make the body scroll.
+        float shared = windowRect.height - y - missionBlock - 30f - footer - headers - 16f;
+        float maxAirbase = Mathf.Max(MinAirbaseHeight, shared - MinAircraftHeight - MinLoadoutHeight);
+        float airbaseHeight = CommanderWindowScale.Section(WindowId, AirbaseSlot, MinAirbaseHeight, MinAirbaseHeight, maxAirbase);
+        float flexible = shared - airbaseHeight;
+        float maxAircraft = Mathf.Max(MinAircraftHeight, flexible - MinLoadoutHeight);
+
+        bool stretched = IsStretched;
+        float loadoutShare = Mathf.Clamp(flexible * 0.6f, MinLoadoutHeight, stretched ? MaxSectionHeight : 260f);
 
         // Floor of three whole 52 px rows: at 76 only two aircraft showed at once. The window grows
         // to fit (requiredHeight), so the floor costs height rather than squeezing the loadout box.
-        float aircraftHeight = Mathf.Clamp(flexible - loadoutHeight, (3 * 52f) + 4f, 240f);
+        float aircraftHeight = CommanderWindowScale.Section(
+            WindowId,
+            AircraftSlot,
+            Mathf.Clamp(flexible - loadoutShare, MinAircraftHeight, stretched ? MaxSectionHeight : 240f),
+            MinAircraftHeight,
+            maxAircraft);
+        float loadoutHeight = stretched ? Mathf.Max(MinLoadoutHeight, flexible - aircraftHeight) : loadoutShare;
 
         GUI.enabled = oldEnabled && interactive;
         y = DrawAircraftSection(y, contentWidth, aircraftHeight);
+        CommanderWindowScale.Splitter(WindowId, AircraftSlot, new Rect(12f, y - 8f, contentWidth, 8f), alongX: false, inverted: false, aircraftHeight, MinAircraftHeight, maxAircraft);
         GUI.enabled = oldEnabled;
 
         y = DrawMissionSection(y, contentWidth, oldEnabled, interactive, needsArea);
 
         GUI.enabled = oldEnabled && interactive;
         y = DrawLoadoutSection(y, contentWidth, loadoutHeight, out Rect loadoutPanel);
-        y = DrawAirbaseSection(y, contentWidth);
+        CommanderWindowScale.Splitter(WindowId, AirbaseSlot, new Rect(12f, y - 8f, contentWidth, 8f), alongX: false, inverted: true, airbaseHeight, MinAirbaseHeight, maxAirbase);
+        y = DrawAirbaseSection(y, contentWidth, airbaseHeight);
         GUI.enabled = oldEnabled;
 
         // The number the player is actually deciding on, right above the button that spends it.
@@ -431,7 +484,8 @@ internal sealed partial class CommanderAirCommandUi
     {
         y = CommanderUiTheme.DrawSection(new Rect(12f, y, width, 18f), "1  AIRCRAFT");
         const float rowHeight = 58f;
-        const float previewWidth = 230f;
+        float maxPreview = Mathf.Max(MinPreviewWidth, width - MinAircraftListWidth - 8f);
+        float previewWidth = CommanderWindowScale.Section(WindowId, PreviewSlot, DefaultPreviewWidth, MinPreviewWidth, maxPreview);
         Rect view = new(12f, y, width - previewWidth - 8f, height);
         GUI.Box(view, string.Empty, CommanderUiTheme.Inset);
         float innerHeight = Mathf.Max(view.height - 4f, (service.Options.Count * rowHeight) + 4f);
@@ -470,6 +524,7 @@ internal sealed partial class CommanderAirCommandUi
         }
 
         Rect preview = new(view.xMax + 8f, y, previewWidth, height);
+        CommanderWindowScale.Splitter(WindowId, PreviewSlot, new Rect(view.xMax, y, 8f, height), alongX: true, inverted: true, previewWidth, MinPreviewWidth, maxPreview);
         GUI.Box(preview, string.Empty, CommanderUiTheme.Inset);
         if (service.SelectedOptionIndex >= 0 && service.SelectedOptionIndex < service.Options.Count)
         {
@@ -652,6 +707,12 @@ internal sealed partial class CommanderAirCommandUi
 
         y += 30f;
 
+        // Another aircraft or the PYLONS tab takes the row away, and the keyboard must come back.
+        if (renamingPreset != null && (service.AdvancedLoadout || !service.HasPreset(renamingPreset)))
+        {
+            EndRename();
+        }
+
         loadoutPanel = new Rect(12f, y, width, height);
         GUI.Box(loadoutPanel, string.Empty, CommanderUiTheme.Panel);
         if (presets)
@@ -667,12 +728,12 @@ internal sealed partial class CommanderAirCommandUi
     }
 
     /// <summary>Step four. One row when the window was opened from a specific hangar.</summary>
-    private float DrawAirbaseSection(float y, float width)
+    private float DrawAirbaseSection(float y, float width, float height)
     {
         y = CommanderUiTheme.DrawSection(
             new Rect(12f, y, width, 18f),
             service.HangarFilter != null ? "4  DEPARTURE HANGAR" : "4  DEPARTURE AIRBASE");
-        Rect view = new(12f, y, width, 76f);
+        Rect view = new(12f, y, width, height);
         float innerHeight = Mathf.Max(view.height, (service.Airbases.Count * 40f) + 4f);
         airbaseScroll = GUI.BeginScrollView(view, airbaseScroll, new Rect(0f, 0f, view.width - 18f, innerHeight));
         for (int i = 0; i < service.Airbases.Count; i++)
@@ -688,7 +749,7 @@ internal sealed partial class CommanderAirCommandUi
         }
 
         GUI.EndScrollView();
-        return y + 84f;
+        return y + height + 8f;
     }
 
     /// <summary>The mode buttons' own hover text first, then any button's <c>GUIContent</c> tooltip.</summary>

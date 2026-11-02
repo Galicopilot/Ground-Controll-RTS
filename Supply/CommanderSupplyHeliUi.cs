@@ -472,24 +472,22 @@ internal sealed class CommanderSupplyHeliUi
         GUI.enabled = enabled;
         y += 44f;
 
-        // A stepper, as AIR COMMAND's TARGET ALTITUDE: STANDARD (0) leaves the height to the game.
+        // A slider, as AIR COMMAND's TARGET ALTITUDE: STANDARD (0) leaves the height to the game.
         Rect panel = new(12f, y, width, 38f);
         GUI.Box(panel, string.Empty, CommanderUiTheme.Panel);
         GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, 180f, 24f), new GUIContent("TERRAIN CLEARANCE", "The lowest it flies over the ground on the way."), CommanderUiTheme.Header);
-        if (GUI.Button(new Rect(panel.x + 200f, panel.y + 5f, 34f, 28f), "-", CommanderUiTheme.Button))
-        {
-            service.TerrainClearanceMeters -= CommanderSupplyHeliService.TerrainClearanceStepMeters;
-        }
-
+        float sliderWidth = Mathf.Max(60f, width - 480f);
+        float step = CommanderSupplyHeliService.TerrainClearanceStepMeters;
+        service.TerrainClearanceMeters = Mathf.Round(
+            GUI.HorizontalSlider(
+                new Rect(panel.x + 200f, panel.y + 14f, sliderWidth, 12f),
+                service.TerrainClearanceMeters,
+                0f,
+                CommanderSupplyHeliService.MaxTerrainClearanceMeters) / step) * step;
         CommanderUiTheme.FitLabel(
-            new Rect(panel.x + 242f, panel.y + 8f, 100f, 24f),
+            new Rect(panel.x + 210f + sliderWidth, panel.y + 8f, 100f, 24f),
             service.TerrainClearanceMeters <= 0f ? "STANDARD" : $"{service.TerrainClearanceMeters:0} m",
             CommanderUiTheme.Header);
-        if (GUI.Button(new Rect(panel.x + 344f, panel.y + 5f, 34f, 28f), "+", CommanderUiTheme.Button))
-        {
-            service.TerrainClearanceMeters += CommanderSupplyHeliService.TerrainClearanceStepMeters;
-        }
-
         ShowLz = CommanderUiTheme.Check(
             new Rect(panel.xMax - 160f, panel.y + 5f, 150f, 28f),
             ShowLz,
@@ -580,7 +578,11 @@ internal sealed class CommanderSupplyHeliUi
     {
         if (aircraft != null)
         {
-            GUI.Label(new Rect(12f, y, width, 22f), GetCostLabel(aircraft), CommanderUiTheme.Header);
+            float cargo = CommanderSupplyHeliService.GetSelectedCargoCost(aircraft);
+            CommanderUiTheme.FitLabel(
+                new Rect(12f, y, width, 22f),
+                cargo > 0f ? $"{GetCostLabel(aircraft)}  |  CARGO  {CommanderEconomyService.FundsLabel(cargo)}" : GetCostLabel(aircraft),
+                CommanderUiTheme.Header);
             y += 24f;
         }
 

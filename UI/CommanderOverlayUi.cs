@@ -363,13 +363,6 @@ internal sealed partial class CommanderOverlayUi : ICommanderActivate, ICommande
             CommanderUiScale.Height - 84f - selectionBarHeight,
             Mathf.Min(680f, CommanderUiScale.Width - 24f),
             selectionBarHeight);
-        if (CommanderFeatureGate.AdvancedFeaturesEnabled && airCommandUi.Visible)
-        {
-            // Beside AIR COMMAND rather than under it: the bar is how an aircraft is picked and
-            // ordered while the window that launched it is still open.
-            Rect air = airCommandUi.WindowRect;
-            selectionBarRect.x = Mathf.Clamp(air.xMax + 12f, 12f, Mathf.Max(12f, CommanderUiScale.Width - selectionBarRect.width - 12f));
-        }
 
         // The portrait stands to the left of the bar, and the pair is centred together.
         selectionBarRect.x += (PortraitSize + 6f) * 0.5f;

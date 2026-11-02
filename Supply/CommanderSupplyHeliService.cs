@@ -17,8 +17,8 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
     /// flight AI will not honour.</summary>
     internal const float MaxTerrainClearanceMeters = 1000f;
 
-    /// <summary>Step for the -/+ buttons. Replaced a list of nine fixed heights, which is the same
-    /// change the Air Command mission tab's altitude control got.</summary>
+    /// <summary>Notch of the TRANSPORT window's slider. Replaced a list of nine fixed heights, which
+    /// is the same change the Air Command mission tab's altitude control got.</summary>
     internal const float TerrainClearanceStepMeters = 25f;
 
     private const string SamSiteCargoSupportSummary = "Automatic SAM-site ammunition run";
@@ -27,6 +27,8 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
     private const string SamSiteJacknifeSupportPrefix = "SAM-site Jacknife:";
     private const float StatusDurationSeconds = 5f;
     private const float PendingSpawnTimeoutSeconds = 90f;
+
+    private static readonly Dictionary<WeaponMount, UnitDefinition[]> MountCargo = new();
 
     private static readonly FieldInfo? AircraftField = AccessTools.Field(typeof(PilotBaseState), "aircraft");
     private static readonly FieldInfo? PilotField = AccessTools.Field(typeof(PilotBaseState), "pilot");
@@ -69,6 +71,8 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
     private static readonly FieldInfo? BayDoorOpenTimerField = AccessTools.Field(typeof(BayDoor), "openTimer");
     private static readonly FieldInfo? BayDoorOpenAmountField = AccessTools.Field(typeof(BayDoor), "openAmount");
     private static readonly FieldInfo? SwivelAircraftField = AccessTools.Field(typeof(SwivelDuctSystem), "aircraft");
+
+    private static VehicleDefinition? radarTruck;
 
     private readonly List<CargoAircraftOption> aircraftOptions = new();
     private readonly List<AirbaseOption> airbaseOptions = new();
@@ -117,8 +121,8 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
 
     internal int SelectedAircraftIndex { get; private set; }
 
-    /// <summary>On whenever a height is set: one stepper, where 0 reads STANDARD, instead of a
-    /// toggle and a stepper for the same number.</summary>
+    /// <summary>On whenever a height is set: one slider, where 0 reads STANDARD, instead of a
+    /// toggle and a slider for the same number.</summary>
     internal bool HighTerrainClearance => terrainClearanceMeters > 0f;
 
     internal float TerrainClearanceMeters
@@ -349,6 +353,23 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
         }
 
         aircraft.GetInputs().customAxis1 = 0f;
+    }
+
+    /// <summary>The same total as <see cref="GetCargoCost"/>, read off the window's bays.</summary>
+    internal static float GetSelectedCargoCost(CargoAircraftOption aircraft)
+    {
+        float cost = 0f;
+        for (int i = 0; i < aircraft.CargoSlots.Count; i++)
+        {
+            CargoSlotOption slot = aircraft.CargoSlots[i];
+            if (slot.SelectedMount != null)
+            {
+                cost += Mathf.Max(aircraft.HardpointSets[slot.HardpointIndex].hardpoints?.Count ?? 0, 1)
+                    * GetMountCargoCost(slot.SelectedMount);
+            }
+        }
+
+        return cost;
     }
 
     internal static string GetCargoSlotButtonLabel(CargoSlotOption slot)
@@ -622,9 +643,10 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
             return;
         }
 
-        if (hq!.GetUnitSupply(aircraftOption.Definition) <= 0 && hq.factionFunds < CommanderEconomyService.PriceOf(aircraftOption.Definition))
+        float airframeCost = hq!.GetUnitSupply(aircraftOption.Definition) > 0 ? 0f : CommanderEconomyService.PriceOf(aircraftOption.Definition);
+        if (hq.factionFunds < airframeCost + GetSelectedCargoCost(aircraftOption))
         {
-            SetStatus("The faction cannot afford this supply aircraft.");
+            SetStatus("The faction cannot afford this supply aircraft and its cargo.");
             return;
         }
 
@@ -1011,9 +1033,9 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
     }
 
     /// <summary>
-    /// What the cargo itself costs. Only a radar is charged: flown in,
-    /// it is the same radar the depot sells, so it costs what the HLT Radar Truck costs there, live,
-    /// so the Unit Prices profile reaches it. Every other load still rides free with its airframe.
+    /// What the cargo itself costs (nothing rides free). A vehicle costs
+    /// what the depot sells it for, live, so the Unit Prices profile reaches it. The depot sells no
+    /// containers, so a load with a shelf is priced by the kilogram like a BUY.
     /// </summary>
     private static float GetCargoCost(AircraftDefinition aircraft, Loadout? loadout)
     {
@@ -1029,15 +1051,64 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
         for (int i = 0; i < loadout.weapons.Count && i < sets.Length; i++)
         {
             WeaponMount? mount = loadout.weapons[i];
-            if (mount != null
-                && TryGetMountedCargoDefinition(mount, out UnitDefinition? cargo)
-                && cargo is VehicleDefinition { vehicleType: VehicleType.RDR } radar)
+            if (mount != null)
             {
-                cost += sets[i].hardpoints.Count * GetRadarTruckPrice(radar);
+                cost += sets[i].hardpoints.Count * GetMountCargoCost(mount);
             }
         }
 
         return cost;
+    }
+
+    /// <summary>A SAM site's own runs stay free: the player never picked that load.</summary>
+    private static bool IsSamSiteRun(string supportSummary)
+    {
+        return supportSummary.IndexOf("SAM-site", StringComparison.Ordinal) >= 0;
+    }
+
+    private static float GetMountCargoCost(WeaponMount mount)
+    {
+        // The window asks every frame, and a prefab's cargo never changes.
+        if (!MountCargo.TryGetValue(mount, out UnitDefinition[] cargo))
+        {
+            List<UnitDefinition> found = new();
+            if (IsRuntimeCargoMount(mount) && mount.prefab != null)
+            {
+                foreach (MountedCargo item in mount.prefab.GetComponentsInChildren<MountedCargo>(true))
+                {
+                    if (item.cargo?.unitPrefab != null)
+                    {
+                        found.Add(item.cargo);
+                    }
+                }
+            }
+
+            cargo = found.ToArray();
+            MountCargo[mount] = cargo;
+        }
+
+        float cost = 0f;
+        for (int i = 0; i < cargo.Length; i++)
+        {
+            cost += GetCargoUnitCost(cargo[i]);
+        }
+
+        return cost;
+    }
+
+    private static float GetCargoUnitCost(UnitDefinition cargo)
+    {
+        if (cargo is VehicleDefinition vehicle)
+        {
+            return vehicle.vehicleType == VehicleType.RDR ? GetRadarTruckPrice(vehicle) : CommanderEconomyService.PriceOf(vehicle);
+        }
+
+        // Against a munitions truck's shelf: a bunker's size is asset data, and it has to be one number.
+        Rearmer? rearmer = cargo.unitPrefab.GetComponentInChildren<Rearmer>(true);
+        return rearmer != null && rearmer.Capacity > 0f
+            ? CommanderSupplyStoreService.GetBaseCost(
+                CommanderSettings.SupplyAmmoPurchaseCost, rearmer.Capacity, CommanderSupplyStoreService.MunitionsTruckAmmoKg)
+            : CommanderEconomyService.PriceOf(cargo);
     }
 
     private static float GetRadarTruckPrice(VehicleDefinition cargo)
@@ -1048,15 +1119,19 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
         }
 
         // The cargo is the trailer the depot does not sell, priced at its authored value.
-        foreach (VehicleDefinition definition in Resources.FindObjectsOfTypeAll<VehicleDefinition>())
+        if (radarTruck == null)
         {
-            if (definition != null && definition.unitName == "HLT Radar Truck")
+            foreach (VehicleDefinition definition in Resources.FindObjectsOfTypeAll<VehicleDefinition>())
             {
-                return CommanderEconomyService.PriceOf(definition);
+                if (definition != null && definition.unitName == "HLT Radar Truck")
+                {
+                    radarTruck = definition;
+                    break;
+                }
             }
         }
 
-        return CommanderEconomyService.PriceOf(cargo);
+        return CommanderEconomyService.PriceOf(radarTruck != null ? radarTruck : cargo);
     }
 
     private static int ParseFoundationSiteId(string supportSummary)
@@ -1289,6 +1364,13 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
                 $"Cargo roster: {option.Label} pilots {(prefab != null ? DescribePilotTypes(prefab) : "none")}, "
                     + $"{(option.Rotary ? "rotary (lands at the LZ)" : "fixed-wing (airdrop only)")}, "
                     + $"{option.CargoSlots.Count} cargo bay(s), value {CommanderEconomyService.PriceOf(option.Definition)}.");
+            for (int slot = 0; slot < option.CargoSlots.Count; slot++)
+            {
+                foreach (WeaponMount mount in option.CargoSlots[slot].Mounts)
+                {
+                    CommanderPlugin.Log.LogInfo($"Cargo price: {GetCargoLabel(mount, string.Empty)} {GetMountCargoCost(mount):0.#} per hardpoint.");
+                }
+            }
         }
     }
 

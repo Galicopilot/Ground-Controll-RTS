@@ -31,6 +31,16 @@ internal sealed partial class CommanderOverlayUi
     private string topBarReserve = string.Empty;
     private float nextTopBarReserveAt;
 
+    /// <summary>A client's clock is the server's, and the game does not network it.</summary>
+    private static bool CanSetSpeed
+    {
+        get
+        {
+            FactionHQ? hq = CommanderGameAccess.GetLocalHq();
+            return hq == null || hq.IsServer;
+        }
+    }
+
     /// <summary>The placement or map instruction under the bar, empty when nothing is armed.</summary>
     private string PlacementHint => economyService.AwaitingPlacement
         ? economyService.PlacementStatus
@@ -69,13 +79,11 @@ internal sealed partial class CommanderOverlayUi
     }
 
     /// <summary>
-    /// Game speed, 1x / 2x / 4x, from <paramref name="x"/> rightward. Host only: a client's clock
-    /// is the server's, and the game does not network it.
+    /// Game speed, 1x / 2x / 4x, from <paramref name="x"/> rightward. Host only.
     /// </summary>
     private static void DrawSpeedButtons(float x, float y, float height)
     {
-        FactionHQ? hq = CommanderGameAccess.GetLocalHq();
-        bool host = hq == null || hq.IsServer;
+        bool host = CanSetSpeed;
         float live = CommanderNetwork.IsGuest ? CommanderNetwork.HostTimeScale : Time.timeScale;
         bool oldEnabled = GUI.enabled;
         GUI.enabled = oldEnabled && host;

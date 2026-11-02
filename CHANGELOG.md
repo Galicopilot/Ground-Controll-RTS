@@ -2,8 +2,27 @@
 
 ## Unreleased
 
+## 1.0.0.0
+
+### Added
+
+- RESERVE button beside RESUPPLY: the aircraft lands at the nearest friendly base, the crew ejects and the aircraft goes back into reserve.
+- Saved aircraft loadout presets can have a custom name: type one after SAVE AS PRESET, or press RENAME on the preset later.
+- AIR COMMAND, BUILD, the vehicle depot and the naval window can be resized by width and height separately: drag the left, right or bottom edge. Right-click an edge to reset it.
+- In those windows the corner grip changes width and height freely. Hold Ctrl while dragging it to zoom the whole window as before. Right-click it to reset size and zoom.
+- Unit and building cards rearrange to fit a resized window, with more columns and bigger pictures.
+- Sections in those windows can be resized by dragging the small bars between them.
+- Game speed keys: F5 for 1x, F6 for 2x, F7 for 4x. Host only.
+- A key to open and close the tactical map, J by default.
+- Map zoom speed slider in Settings > Camera.
+- With a vehicle depot selected, right-click sets its rally point, in the world or on the map.
+- Enter presses the buy button in the depot and naval windows, and in AIR COMMAND for aircraft that need no area.
+
 ### Changed
 
+- The tactical map's resize grip is in its bottom-left corner.
+- The unit selection bar stays in place when AIR COMMAND is open, and AIR COMMAND draws on top of it where they overlap.
+- AIR COMMAND's saved zoom and height are reset once, so the window opens at the same text size as the others.
 - AI commanders build gas terminals instead of fuel exchanges, and only gold mines from 850 income per minute.
 - Call signs are handed out in random order.
 - A vehicle depot builds one unit at a time for the whole team.
@@ -11,9 +30,20 @@
 - SET LZ is available for any AI aircraft with cargo aboard.
 - Control towers cost 750 (was 60).
 - Public builds no longer write Ground Control log lines.
+- All TRANSPORT cargo costs money on every launch, and the TRANSPORT window shows the cargo cost.
+- Naval supply helicopters pay for their cargo too.
+- The altitude slider gives low altitudes much more of its travel, so heights like 500 m are easy to pick.
+- TERRAIN CLEARANCE in the TRANSPORT window is a slider.
 
 ### Fixed
 
+- Modded cargo aircraft such as the MC-260 Chimera fly to your LZ and drop there instead of picking their own target.
+- A newly launched fixed-wing transport no longer warns that it is at 0% fuel.
+- Typing M while renaming a preset or chatting no longer closes AIR COMMAND or opens the map.
+- The tactical map's header buttons no longer overlap on a small map.
+- Modded ground vehicles such as the Chimera mod's FRCV and CRV-L show their full body in unit pictures.
+- Typing a preset's name no longer sets off keyboard shortcuts, such as B opening the BUILD window.
+- SAVE AS PRESET always opens the name box, even when the pylons match an existing preset, and scrolls to it.
 - The GC RTS filter in the mission picker lists the mod's own missions.
 - Builders no longer park in a vehicle depot's exit lane.
 - A ground vehicle stuck inside a depot's walls is moved outside after 20 seconds.

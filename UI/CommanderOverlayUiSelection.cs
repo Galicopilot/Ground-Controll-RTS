@@ -729,7 +729,7 @@ internal sealed partial class CommanderOverlayUi
         // "PATROL ON" and "CLICK AREA" wrapped onto a second line and were cut in half.
         bool hasAircraft = moveService.HasSelectedAircraft;
         bool hasArtillery = CommanderAreaFire.SelectionCanAreaFire(selectionService.SelectedUnits);
-        float columns = 5f + (hasAircraft ? 1f : 0f) + (hasArtillery ? 1f : 0f);
+        float columns = 5f + (hasAircraft ? 2f : 0f) + (hasArtillery ? 1f : 0f);
         float buttonWidth = Mathf.Min(120f, (selectionBarRect.width - 28f - ((columns - 1f) * 6f)) / columns);
         float step = buttonWidth + 6f;
         float x = selectionBarRect.xMax - ((buttonWidth * columns) + ((columns - 1f) * 6f)) - 14f;
@@ -790,7 +790,16 @@ internal sealed partial class CommanderOverlayUi
             moveService.ResupplySelectedAircraft();
         }
 
-        float next = 4f + (hasAircraft ? 1f : 0f);
+        if (hasAircraft
+            && GUI.Button(
+                new Rect(x + (step * 5f), rowY, buttonWidth, 34f),
+                new GUIContent("RESERVE", "Sends the selected aircraft to the nearest airbase the faction holds and lands them, where the crew ejects and the aircraft goes back into reserve, ready to launch again. Aircraft already on that field do it where they stand."),
+                CommanderUiTheme.Button))
+        {
+            moveService.ReserveSelectedAircraft();
+        }
+
+        float next = 4f + (hasAircraft ? 2f : 0f);
         if (hasArtillery)
         {
             bool armed = CommanderAreaFire.AwaitingTarget;
