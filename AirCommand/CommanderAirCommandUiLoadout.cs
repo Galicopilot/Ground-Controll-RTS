@@ -66,7 +66,7 @@ internal sealed partial class CommanderAirCommandUi
                 continue;
             }
 
-            if (GUI.Button(
+            if (CommanderUiTheme.FitWordButton(
                 new Rect(buttonWidth + 6f, 2f + (i * 52f), 60f, 46f),
                 new GUIContent("RENAME", "Give this saved preset your own name."),
                 CommanderUiTheme.Button))
@@ -75,7 +75,7 @@ internal sealed partial class CommanderAirCommandUi
             }
 
             bool armed = deletePresetArmed == i && Time.unscaledTime <= deletePresetArmedUntil;
-            if (GUI.Button(
+            if (CommanderUiTheme.FitWordButton(
                 new Rect(buttonWidth + PresetRowButtonWidth + 6f, 2f + (i * 52f), 60f, 46f),
                 new GUIContent(armed ? "SURE?" : "DELETE", "Deletes this saved preset for good. Click twice."),
                 CommanderUiTheme.DangerButton))

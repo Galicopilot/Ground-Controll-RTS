@@ -372,6 +372,49 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
         return cost;
     }
 
+    /// <summary>
+    /// Loads the price editor has no vehicle row for, or whose vehicle row is not what they cost:
+    /// containers, and the radar trailers priced off the truck.
+    /// </summary>
+    internal static List<UnitDefinition> FindCargoOnlyUnits()
+    {
+        List<UnitDefinition> units = new();
+        foreach (WeaponMount mount in Resources.FindObjectsOfTypeAll<WeaponMount>())
+        {
+            if (mount == null)
+            {
+                continue;
+            }
+
+            foreach (UnitDefinition cargo in GetMountCargo(mount))
+            {
+                if (!string.IsNullOrEmpty(cargo.unitName)
+                    && (cargo is not VehicleDefinition vehicle
+                        || (vehicle.vehicleType == VehicleType.RDR && CommanderGameAccess.IsTrailerVehicleDefinition(vehicle))))
+                {
+                    units.Add(cargo);
+                }
+            }
+        }
+
+        return units;
+    }
+
+    internal static float GetDefaultCargoUnitCost(UnitDefinition cargo)
+    {
+        if (cargo is VehicleDefinition vehicle)
+        {
+            return vehicle.vehicleType == VehicleType.RDR ? GetRadarTruckPrice(vehicle) : CommanderEconomyService.PriceOf(vehicle);
+        }
+
+        // Against a munitions truck's shelf: a bunker's size is asset data, and it has to be one number.
+        Rearmer? rearmer = cargo.unitPrefab.GetComponentInChildren<Rearmer>(true);
+        return rearmer != null && rearmer.Capacity > 0f
+            ? CommanderSupplyStoreService.GetBaseCost(
+                CommanderSettings.SupplyAmmoPurchaseCost, rearmer.Capacity, CommanderSupplyStoreService.MunitionsTruckAmmoKg)
+            : CommanderEconomyService.PriceOf(cargo);
+    }
+
     internal static string GetCargoSlotButtonLabel(CargoSlotOption slot)
     {
         string cargo = slot.SelectedMount != null
@@ -1068,6 +1111,18 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
 
     private static float GetMountCargoCost(WeaponMount mount)
     {
+        UnitDefinition[] cargo = GetMountCargo(mount);
+        float cost = 0f;
+        for (int i = 0; i < cargo.Length; i++)
+        {
+            cost += GetCargoUnitCost(cargo[i]);
+        }
+
+        return cost;
+    }
+
+    private static UnitDefinition[] GetMountCargo(WeaponMount mount)
+    {
         // The window asks every frame, and a prefab's cargo never changes.
         if (!MountCargo.TryGetValue(mount, out UnitDefinition[] cargo))
         {
@@ -1087,28 +1142,13 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
             MountCargo[mount] = cargo;
         }
 
-        float cost = 0f;
-        for (int i = 0; i < cargo.Length; i++)
-        {
-            cost += GetCargoUnitCost(cargo[i]);
-        }
-
-        return cost;
+        return cargo;
     }
 
+    /// <summary>The profile's price wins for every load, whatever it would cost by default.</summary>
     private static float GetCargoUnitCost(UnitDefinition cargo)
     {
-        if (cargo is VehicleDefinition vehicle)
-        {
-            return vehicle.vehicleType == VehicleType.RDR ? GetRadarTruckPrice(vehicle) : CommanderEconomyService.PriceOf(vehicle);
-        }
-
-        // Against a munitions truck's shelf: a bunker's size is asset data, and it has to be one number.
-        Rearmer? rearmer = cargo.unitPrefab.GetComponentInChildren<Rearmer>(true);
-        return rearmer != null && rearmer.Capacity > 0f
-            ? CommanderSupplyStoreService.GetBaseCost(
-                CommanderSettings.SupplyAmmoPurchaseCost, rearmer.Capacity, CommanderSupplyStoreService.MunitionsTruckAmmoKg)
-            : CommanderEconomyService.PriceOf(cargo);
+        return CommanderPriceProfile.TryGetUnitPrice(cargo.unitName, out float price) ? price : GetDefaultCargoUnitCost(cargo);
     }
 
     private static float GetRadarTruckPrice(VehicleDefinition cargo)

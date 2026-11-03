@@ -290,7 +290,7 @@ internal sealed partial class CommanderAirCommandService
     }
 
     /// <summary>Nearest airbase the aircraft's own faction holds; with <paramref name="mustFit"/>,
-    /// only one with a runway long enough for it (<see cref="HasTakeoffRunway"/>).</summary>
+    /// only one it can land on and leave again (<see cref="FitsField"/>).</summary>
     internal static Airbase? FindNearestOwnedAirbase(Aircraft aircraft, bool mustFit = false)
     {
         FactionHQ? hq = aircraft?.NetworkHQ;
@@ -306,7 +306,7 @@ internal sealed partial class CommanderAirCommandService
             if (airbase == null
                 || airbase.disabled
                 || airbase.center == null
-                || (mustFit && !HasTakeoffRunway(airbase, aircraft.definition)))
+                || (mustFit && !FitsField(aircraft, airbase)))
             {
                 continue;
             }
@@ -446,6 +446,13 @@ internal sealed partial class CommanderAirCommandService
     internal static void SetTaxiingAircraft(Pilot? pilot)
     {
         taxiingAircraft = pilot == null ? null : pilot.aircraft;
+    }
+
+    /// <summary>Not an AI faction and not a team nobody plays: its aircraft are serviced, not recovered.</summary>
+    internal static bool IsHumanLed(FactionHQ hq, FactionHQ? localHq)
+    {
+        return !CommanderEnemyCommanderService.IsAiFaction(hq, localHq)
+            && (hq == localHq || CommanderEnemyCommanderService.HasHumanPlayers(hq));
     }
 
     internal static void ReturnToCombatState(Aircraft aircraft)
@@ -637,10 +644,15 @@ internal sealed partial class CommanderAirCommandService
         // Before the forward, so a guest sees it. True because the order is answered: false would
         // send the caller on to a plain travel point over the field. An Ifrit (1200 m) on South
         // Boscali's 1199 m runway was handed to the approach, refused, and flew off to land at home.
-        if (intent == LandingIntent.Capture && !HasLandingRunway(aircraft, airbase))
+        // Resupply and reserve too, a click on a short field included; not for one already standing
+        // there, which is serviced where it is.
+        bool needsRunway = intent == LandingIntent.Capture
+            || (intent is LandingIntent.Resupply or LandingIntent.Reserve && !IsStandingOn(aircraft, airbase));
+        if (needsRunway && !HasLandingRunway(aircraft, airbase))
         {
             RefuseLaunch(
-                $"{CommanderGameAccess.GetUnitLabel(aircraft)} cannot capture {CommanderCaptureService.GetAirbaseLabel(airbase)}: "
+                $"{CommanderGameAccess.GetUnitLabel(aircraft)} cannot {(intent == LandingIntent.Capture ? "capture" : "land at")} "
+                    + $"{CommanderCaptureService.GetAirbaseLabel(airbase)}: "
                     + $"no runway it can land on (needs {aircraft.GetAircraftParameters().takeoffDistance:0} m).");
             return true;
         }
@@ -733,12 +745,12 @@ internal sealed partial class CommanderAirCommandService
             return true;
         }
 
-        // A field it can take off from again first: the nearest one regardless sent a Vortex to a
-        // frigate's helipad over and over ("no runway it fits").
-        Airbase? nearest = FindNearestOwnedAirbase(aircraft, mustFit: true) ?? FindNearestOwnedAirbase(aircraft);
+        // Only a field it can land on and take off from again: the nearest one regardless sent a
+        // Vortex to a frigate's helipad over and over ("no runway it fits").
+        Airbase? nearest = FindNearestOwnedAirbase(aircraft, mustFit: true);
         if (nearest == null)
         {
-            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly airbase to return to.");
+            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly airbase it can land on.");
             return false;
         }
 
@@ -754,21 +766,28 @@ internal sealed partial class CommanderAirCommandService
     /// Sends an aircraft to the nearest field its faction holds, where the crew ejects and the
     /// airframe goes back into stock. One already standing on that field does so where it is.
     /// </summary>
-    internal bool ReserveAircraft(Aircraft aircraft)
+    internal bool ReserveAircraft(Aircraft aircraft, bool announce = true)
     {
         if (ForwardAir("air.reserve", aircraft))
         {
             return true;
         }
 
-        Airbase? nearest = FindNearestOwnedAirbase(aircraft, mustFit: true) ?? FindNearestOwnedAirbase(aircraft);
+        Airbase? closest = FindNearestOwnedAirbase(aircraft);
+        Airbase? nearest = closest != null && IsStandingOn(aircraft, closest)
+            ? closest
+            : FindNearestOwnedAirbase(aircraft, mustFit: true);
         if (nearest == null)
         {
-            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly airbase to return to.");
+            if (announce)
+            {
+                SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly airbase it can land on.");
+            }
+
             return false;
         }
 
-        return SetAircraftLandingOrder(aircraft, nearest, LandingIntent.Reserve, append: false);
+        return SetAircraftLandingOrder(aircraft, nearest, LandingIntent.Reserve, append: false, announce);
     }
 
     /// <summary>
@@ -985,6 +1004,19 @@ internal sealed partial class CommanderAirCommandService
         return false;
     }
 
+    /// <summary>It can land here and leave again. Takeoff alone is not enough: a ski-jump passes that
+    /// test and a takeoff-only strip has nowhere to land.</summary>
+    private static bool FitsField(Aircraft aircraft, Airbase airbase)
+    {
+        return HasTakeoffRunway(airbase, aircraft.definition) && HasLandingRunway(aircraft, airbase);
+    }
+
+    private static bool IsStandingOn(Aircraft aircraft, Airbase airbase)
+    {
+        return IsOnDeck(aircraft)
+            && FastMath.InRange(airbase.center.GlobalPosition(), aircraft.GlobalPosition(), OnFieldMeters);
+    }
+
     /// <summary>A player order given on a low tank is still being flown: a travel point not yet
     /// reached, a live commanded target, or an escort.</summary>
     private static bool HoldsLowFuelOrder(AirMission mission)
@@ -993,13 +1025,6 @@ internal sealed partial class CommanderAirCommandService
             && (mission.RouteIndex < mission.Route.Count
                 || (mission.ForcedTarget != null && !mission.ForcedTarget.disabled)
                 || mission.EscortTarget != null);
-    }
-
-    /// <summary>Not an AI faction and not a team nobody plays: its aircraft are serviced, not recovered.</summary>
-    private static bool IsHumanLed(FactionHQ hq, FactionHQ? localHq)
-    {
-        return !CommanderEnemyCommanderService.IsAiFaction(hq, localHq)
-            && (hq == localHq || CommanderEnemyCommanderService.HasHumanPlayers(hq));
     }
 
     /// <summary>A human-led aeroplane that landed at a field its side holds and is being abandoned there.</summary>

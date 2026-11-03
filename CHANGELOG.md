@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- A transport that has delivered its cargo goes straight into a RESERVE mission: it returns to the nearest friendly base, the crew ejects and the aircraft goes back into reserve.
+
+### Fixed
+
+- Every load a transport carries now follows UNIT PRICES. A new CARGO list holds the loads that had no row of their own, such as fuel, supply and radar containers.
+- container being moved by the camera during its unload.
+
 ## 1.0.0.0
 
 ### Added

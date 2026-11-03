@@ -380,7 +380,7 @@ internal sealed partial class CommanderAirCommandService
             // game's NoTarget flies it at the mission's objective, which is the enemy base: the
             // Chimera and Medusa that circled it. Point it home and let the sweep send it again.
             mission.RtbIssued = false;
-            Airbase? home = mission.LandingBase != null && HasTakeoffRunway(mission.LandingBase, aircraft.definition)
+            Airbase? home = mission.LandingBase != null && FitsField(aircraft, mission.LandingBase)
                 ? mission.LandingBase
                 : FindNearestOwnedAirbase(aircraft, mustFit: true) ?? mission.LandingBase ?? FindNearestOwnedAirbase(aircraft);
             if (home == null || home.center == null)

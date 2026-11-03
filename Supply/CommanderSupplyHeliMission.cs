@@ -299,14 +299,16 @@ internal sealed partial class CommanderSupplyHeliService
             yield break;
         }
 
-        Vector3 start = cargo.transform.position;
-        Vector3 target = start + (direction.normalized * 6f);
+        // Global: the camera can shift the floating origin during the glide, and a local start would
+        // then put the load that far off, usually in the air.
+        GlobalPosition start = cargo.GlobalPosition();
+        Vector3 move = direction.normalized * 6f;
         const float moveDuration = 5f;
         float startedAt = Time.timeSinceLevelLoad;
         while (cargo != null && Time.timeSinceLevelLoad - startedAt < moveDuration)
         {
             float t = Mathf.SmoothStep(0f, 1f, (Time.timeSinceLevelLoad - startedAt) / moveDuration);
-            Vector3 position = Vector3.Lerp(start, target, t);
+            Vector3 position = (start + (move * t)).ToLocalPosition();
             if (cargo.rb != null)
             {
                 cargo.rb.MovePosition(position);
@@ -319,6 +321,13 @@ internal sealed partial class CommanderSupplyHeliService
             }
 
             yield return new WaitForFixedUpdate();
+        }
+
+        // Zero velocity for 5 s reads as landed, so a container froze itself partway through the glide
+        // (Container.FixedUpdate). Let it settle again from where the flat glide ended, over a slope too.
+        if (cargo is Container container && container != null)
+        {
+            container.Networkkinematic = false;
         }
 
         NotifyFoundationCargoActivated(mission, cargo);
@@ -2129,7 +2138,7 @@ internal sealed partial class CommanderSupplyHeliService
         /// </summary>
         internal bool FixedWing { get; set; }
 
-        /// <summary>Set once the fixed-wing run has emptied its bays, so the tick stops looking at it.</summary>
+        /// <summary>Set once the run has emptied its bays and gone to reserve, so the tick stops looking at it.</summary>
         internal bool DropRunComplete { get; set; }
 
         /// <summary>`Time.timeSinceLevelLoad` the airframe was handed this run.</summary>

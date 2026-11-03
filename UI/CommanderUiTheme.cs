@@ -688,6 +688,27 @@ internal static class CommanderUiTheme
     }
 
     /// <summary>
+    /// <see cref="FitButton"/> for a one-word label in a narrow button. A wrapped word still fits
+    /// the rect's height, so this measures its width on one line instead.
+    /// </summary>
+    internal static bool FitWordButton(Rect rect, GUIContent content, GUIStyle style)
+    {
+        Ensure();
+        int restore = style.fontSize;
+        bool wrap = style.wordWrap;
+        style.wordWrap = false;
+        while (style.fontSize > 9 && style.CalcSize(content).x > rect.width)
+        {
+            style.fontSize--;
+        }
+
+        bool clicked = GUI.Button(rect, content, style);
+        style.fontSize = restore;
+        style.wordWrap = wrap;
+        return clicked;
+    }
+
+    /// <summary>
     /// Draws the hover text of whatever control is under the mouse, beside the cursor and kept
     /// inside <paramref name="bounds"/>. Call it last, after every control: IMGUI only knows the
     /// tooltip once the hovered control has been drawn. With no <paramref name="text"/> it reads

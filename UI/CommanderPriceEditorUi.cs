@@ -26,8 +26,8 @@ internal static class CommanderPriceEditorUi
     private const string PriceFieldPrefix = "gc.price.";
     private const string ProfileNameField = "gc.profile";
     private const string SearchField = "gc.search";
-    private static readonly string[] FilterLabels = { "ALL", "GROUND", "AIR", "NAVAL", "BUILDINGS", "CHANGED" };
-    private static readonly float[] FilterWidths = { 52f, 78f, 52f, 66f, 96f, 86f };
+    private static readonly string[] FilterLabels = { "ALL", "GROUND", "AIR", "NAVAL", "CARGO", "BUILDINGS", "CHANGED" };
+    private static readonly float[] FilterWidths = { 52f, 78f, 52f, 66f, 66f, 96f, 86f };
     private static readonly List<PriceRow> Rows = new();
     private static readonly HashSet<string> RowNames = new(StringComparer.Ordinal);
 
@@ -49,6 +49,7 @@ internal static class CommanderPriceEditorUi
         Ground,
         Air,
         Naval,
+        Cargo,
         Building,
     }
 
@@ -498,6 +499,16 @@ internal static class CommanderPriceEditorUi
         rowsRevision = CommanderPriceProfile.Revision;
         Rows.Clear();
         RowNames.Clear();
+
+        // First, so a radar trailer shows what it costs as cargo rather than its vehicle value.
+        foreach (UnitDefinition cargo in CommanderSupplyHeliService.FindCargoOnlyUnits())
+        {
+            if (RowNames.Add(cargo.unitName))
+            {
+                AddRow(new PriceRow(PriceKind.Cargo, cargo.unitName, "CARGO", CommanderSupplyHeliService.GetDefaultCargoUnitCost(cargo), 0));
+            }
+        }
+
         List<UnitDefinition> units = CommanderEconomyService.PricedUnits;
         for (int i = 0; i < units.Count; i++)
         {
@@ -573,8 +584,9 @@ internal static class CommanderPriceEditorUi
             1 => row.Kind == PriceKind.Ground,
             2 => row.Kind == PriceKind.Air,
             3 => row.Kind == PriceKind.Naval,
-            4 => row.Kind == PriceKind.Building,
-            5 => IsChanged(row),
+            4 => row.Kind == PriceKind.Cargo,
+            5 => row.Kind == PriceKind.Building,
+            6 => IsChanged(row),
             _ => true,
         };
         if (passes && (search.Length == 0

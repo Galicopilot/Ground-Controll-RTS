@@ -44,6 +44,8 @@ internal sealed partial class CommanderSupplyHeliService
     /// </summary>
     private readonly System.Collections.Generic.List<Aircraft> completedFixedWingRuns = new();
 
+    private readonly System.Collections.Generic.List<Aircraft> runsGoingToReserve = new();
+
     private Aircraft? pendingLzAircraft;
     private float nextFixedWingDropAt;
     private float nextFixedWingTickAt;
@@ -231,6 +233,23 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         CommanderPlugin.Log.LogInfo($"{CommanderGameAccess.GetUnitLabel(aircraft)} taken off its cargo run by a new order.");
+    }
+
+    /// <summary>
+    /// True once a helicopter has emptied its bays and flown out of the unload. Not before: the
+    /// takeoff guard refuses a state change that low, so an order given on the LZ would be lost. An
+    /// aircraft the player has tasked since the drop is left to that order.
+    /// </summary>
+    private static bool IsRotaryRunFinished(Aircraft aircraft, CargoMission mission)
+    {
+        Pilot? pilot = aircraft.pilots != null && aircraft.pilots.Length > 0 ? aircraft.pilots[0] : null;
+        return pilot != null
+            && !mission.TargetOverrideActive
+            && mission.ReleasedCargoCount > 0
+            && !HasDeployableCargo(aircraft)
+            && pilot.currentState is not AIHeloTransportState
+            && pilot.currentState != pilot.AIHeloTakeoffState
+            && CommanderAirCommandService.Instance?.IsCommandedAircraft(aircraft) == false;
     }
 
     private static void RestartCargoApproach(CargoMission mission)
@@ -429,10 +448,20 @@ internal sealed partial class CommanderSupplyHeliService
             CargoMission mission = entry.Value;
             if (aircraft == null
                 || aircraft.disabled
-                || !mission.FixedWing
                 || mission.Cancelled
                 || mission.DropRunComplete)
             {
+                continue;
+            }
+
+            if (!mission.FixedWing)
+            {
+                if (IsRotaryRunFinished(aircraft, mission))
+                {
+                    mission.DropRunComplete = true;
+                    runsGoingToReserve.Add(aircraft);
+                }
+
                 continue;
             }
 
@@ -455,6 +484,7 @@ internal sealed partial class CommanderSupplyHeliService
                 CloseCargoDoors(mission);
                 CommanderSelectionService.PinMissionUnit(aircraft, "SUPPLY", "Cargo delivered");
                 completedFixedWingRuns.Add(aircraft);
+                runsGoingToReserve.Add(aircraft);
                 CommanderPlugin.Log.LogInfo(
                     $"{CommanderGameAccess.GetUnitLabel(aircraft)} finished its cargo run with "
                         + $"{mission.ReleasedCargoCount} load(s) dropped; it is an ordinary aircraft again.");
@@ -507,6 +537,20 @@ internal sealed partial class CommanderSupplyHeliService
         }
 
         completedFixedWingRuns.Clear();
+
+        // Outside the loop: the order goes through EndCargoRun, which reads this same dictionary.
+        for (int i = 0; i < runsGoingToReserve.Count; i++)
+        {
+            // An AI faction's builder run keeps the base game's trip home, which stocks the airframe.
+            Aircraft aircraft = runsGoingToReserve[i];
+            if (CommanderAirCommandService.IsHumanLed(aircraft.NetworkHQ, CommanderGameAccess.GetLocalHq()))
+            {
+                CommanderNetwork.RunAs(
+                    aircraft.NetworkHQ, () => CommanderAirCommandService.Instance?.ReserveAircraft(aircraft, announce: false));
+            }
+        }
+
+        runsGoingToReserve.Clear();
     }
 
     /// <summary>
