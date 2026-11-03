@@ -681,7 +681,17 @@ internal sealed partial class CommanderOverlayUi
         CommanderSettings.ShowBuildUi = showBuildUi;
     }
 
-    private void DrawControlSettings(float y)
+    // Scrolls so the reset buttons stay reachable when the window is clamped to a short screen.
+    private void DrawControlSettings(float top)
+    {
+        Rect view = new(0f, top, settingsWindowRect.width, settingsWindowRect.height - top - 8f);
+        Rect inner = new(0f, 0f, settingsWindowRect.width - 20f, 700f);
+        controlsScroll = GUI.BeginScrollView(view, controlsScroll, inner);
+        DrawControlBindings(0f);
+        GUI.EndScrollView();
+    }
+
+    private void DrawControlBindings(float y)
     {
         GUI.Box(new Rect(12f, y, settingsWindowRect.width - 24f, 696f), string.Empty, CommanderUiTheme.Panel);
         GUI.Label(

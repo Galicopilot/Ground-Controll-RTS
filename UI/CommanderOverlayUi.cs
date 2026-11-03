@@ -119,6 +119,7 @@ internal sealed partial class CommanderOverlayUi : ICommanderActivate, ICommande
     private int chipRevision = -1;
     private int chipCount = -1;
     private Vector2 shortcutScroll;
+    private Vector2 controlsScroll;
     private Rect pinnedWindowRect;
     private Rect radarWindowRect;
     private Rect selectionHelpRect;
