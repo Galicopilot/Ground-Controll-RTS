@@ -28,7 +28,8 @@ internal static class CommanderFactionVehiclePatches
     private static bool DeployAIAircraftPrefix(FactionHQ __instance)
     {
         return !CommanderFactionVehicleService.IsFriendlyAiOff(__instance)
-            && !CommanderUnitCap.IsFull(__instance, tellPlayer: false);
+            && !CommanderUnitCap.IsFull(__instance, tellPlayer: false)
+            && !CommanderUnitCap.IsAircraftFull(__instance);
     }
 
     [HarmonyPatch(typeof(FactionHQ), "DeployVehicles")]

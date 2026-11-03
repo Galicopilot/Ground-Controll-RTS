@@ -80,6 +80,11 @@ internal sealed partial class CommanderAirCommandService
             return RefuseAiLaunch(hq, airbase, definition, $"unit cap of {CommanderUnitCap.Cap} reached");
         }
 
+        if (CommanderUnitCap.IsKindFull(hq, definition))
+        {
+            return RefuseAiLaunch(hq, airbase, definition, $"aircraft cap of {CommanderUnitCap.AircraftCap} reached");
+        }
+
         if (CommanderUnitCap.IsAiTypeFull(hq, definition))
         {
             return RefuseAiLaunch(hq, airbase, definition, $"{CommanderUnitCap.TypeCap} of this airframe already up");

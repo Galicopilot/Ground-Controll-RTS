@@ -306,6 +306,7 @@ internal static class CommanderMissionEditorPatches
         Row("Unit Cap", CommanderMapSettings.UnitCapPrefix, string.Empty, CommanderUnitCap.ModeCount + 1, i => i, CommanderMissionSettingsPatches.UnitCapLabel, 0);
         Row("Ship Cap", CommanderMapSettings.ShipCapPrefix, string.Empty, CommanderUnitCap.MaxKindCap + 1, i => i, CommanderMissionSettingsPatches.KindCapLabel, 0);
         Row("Artillery Cap", CommanderMapSettings.ArtilleryCapPrefix, string.Empty, CommanderUnitCap.MaxKindCap + 1, i => i, CommanderMissionSettingsPatches.KindCapLabel, 0);
+        Row("Aircraft Cap", CommanderMapSettings.AircraftCapPrefix, string.Empty, CommanderUnitCap.MaxKindCap + 1, i => i, CommanderMissionSettingsPatches.KindCapLabel, 0);
         Row("Build Radius", CommanderMapSettings.BuildRadiusPrefix, " km", 29, i => (i + 2) * 0.5f, i => Number((i + 2) * 0.5f) + " km", 3);
         Row("Naval Dock Radius", CommanderMapSettings.DockRadiusPrefix, " km", 49, i => (i + 2) * 0.5f, i => Number((i + 2) * 0.5f) + " km", 22);
         Row("Aircraft Capture Strength", CommanderMapSettings.AircraftCapturePrefix, string.Empty, 33, i => i * 0.5f, i => Number(i * 0.5f), 16);

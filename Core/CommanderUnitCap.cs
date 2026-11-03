@@ -19,7 +19,7 @@ internal static class CommanderUnitCap
     internal const int ModeNormal = 1;
     internal const int ModeLarge = 2;
 
-    /// <summary>Highest ship or artillery cap the settings offer.</summary>
+    /// <summary>Highest ship, artillery or aircraft cap the settings offer.</summary>
     internal const int MaxKindCap = 50;
 
     private static readonly int[] Caps = { 60, 150, 300, 450 };
@@ -29,8 +29,8 @@ internal static class CommanderUnitCap
     // once, not every tick.
     private static readonly HashSet<FactionHQ> Logged = new();
 
-    // Same, per faction and kind (true for the ship cap, false for artillery).
-    private static readonly HashSet<(FactionHQ, bool)> LoggedKind = new();
+    // Same, per faction and kind ("SHIP", "ARTILLERY" or "AIRCRAFT").
+    private static readonly HashSet<(FactionHQ, string)> LoggedKind = new();
 
     internal static int ModeCount => Caps.Length;
 
@@ -42,6 +42,9 @@ internal static class CommanderUnitCap
 
     /// <summary>Artillery vehicles each side may field, 0 for no limit. Like <see cref="ShipCap"/>.</summary>
     internal static int ArtilleryCap => UnityEngine.Mathf.Clamp(CommanderMapSettings.OverrideInt(CommanderMapSettings.ArtilleryCapPrefix) ?? 0, 0, MaxKindCap);
+
+    /// <summary>Aircraft each side may have up, 0 for no limit. Like <see cref="ShipCap"/>.</summary>
+    internal static int AircraftCap => UnityEngine.Mathf.Clamp(CommanderMapSettings.OverrideInt(CommanderMapSettings.AircraftCapPrefix) ?? 0, 0, MaxKindCap);
 
     /// <summary>On a guest, the host's mode, -1 for off. A host without the mod sends nothing, and has no cap.</summary>
     internal static int HostMode { get; set; } = -1;
@@ -188,16 +191,37 @@ internal static class CommanderUnitCap
         return true;
     }
 
+    /// <summary>True when the side is at the aircraft cap, for spawns that pick their airframe later.</summary>
+    internal static bool IsAircraftFull(FactionHQ? hq)
+    {
+        if (AircraftCap <= 0 || hq == null || hq.factionUnits == null)
+        {
+            return false;
+        }
+
+        int count = 0;
+        foreach (PersistentID id in hq.factionUnits)
+        {
+            if (id.TryGetUnit(out Unit unit) && !unit.disabled && unit is Aircraft)
+            {
+                count++;
+            }
+        }
+
+        return count >= AircraftCap;
+    }
+
     /// <summary>
-    /// True when <paramref name="definition"/> is a ship and the side is at the ship cap, or artillery
-    /// and the side is at the artillery cap. Tells and logs like <see cref="IsFull"/>.
+    /// True when <paramref name="definition"/> is a ship, artillery or an aircraft and the side is at
+    /// that kind's cap. Tells and logs like <see cref="IsFull"/>.
     /// </summary>
     internal static bool IsKindFull(FactionHQ? hq, UnitDefinition? definition, bool tellPlayer = true)
     {
-        bool ship = definition is ShipDefinition;
-        int cap = ship ? ShipCap
-            : definition is VehicleDefinition { vehicleType: VehicleType.ART } ? ArtilleryCap
-            : 0;
+        string kind = definition is ShipDefinition ? "SHIP"
+            : definition is AircraftDefinition ? "AIRCRAFT"
+            : definition is VehicleDefinition { vehicleType: VehicleType.ART } ? "ARTILLERY"
+            : string.Empty;
+        int cap = kind switch { "SHIP" => ShipCap, "AIRCRAFT" => AircraftCap, "ARTILLERY" => ArtilleryCap, _ => 0 };
         if (cap <= 0 || hq == null || hq.factionUnits == null)
         {
             return false;
@@ -207,29 +231,30 @@ internal static class CommanderUnitCap
         foreach (PersistentID id in hq.factionUnits)
         {
             if (id.TryGetUnit(out Unit unit) && !unit.disabled
-                && (ship ? unit is Ship : unit.definition is VehicleDefinition { vehicleType: VehicleType.ART }))
+                && (kind == "SHIP" ? unit is Ship
+                    : kind == "AIRCRAFT" ? unit is Aircraft
+                    : unit.definition is VehicleDefinition { vehicleType: VehicleType.ART }))
             {
                 count++;
             }
         }
 
-        string kind = ship ? "SHIP" : "ARTILLERY";
         if (count < cap)
         {
-            LoggedKind.Remove((hq, ship));
+            LoggedKind.Remove((hq, kind));
             return false;
         }
 
         if (ReferenceEquals(hq, CommanderGameAccess.GetLocalHq()))
         {
-            if (tellPlayer && LoggedKind.Add((hq, ship)))
+            if (tellPlayer && LoggedKind.Add((hq, kind)))
             {
                 CommanderNotice.Fail($"{kind} CAP REACHED: {count} / {cap}");
             }
         }
-        else if (LoggedKind.Add((hq, ship)))
+        else if (LoggedKind.Add((hq, kind)))
         {
-            CommanderPlugin.Log.LogInfo($"{hq.faction?.factionName} is at the {(ship ? "ship" : "artillery")} cap ({count} / {cap}); those spawns are held.");
+            CommanderPlugin.Log.LogInfo($"{hq.faction?.factionName} is at the {kind} cap ({count} / {cap}); those spawns are held.");
         }
 
         return true;

@@ -40,6 +40,7 @@ internal static class CommanderMapSettings
     internal const string UnitCapPrefix = "GC Unit Cap ";
     internal const string ShipCapPrefix = "GC Ship Cap ";
     internal const string ArtilleryCapPrefix = "GC Artillery Cap ";
+    internal const string AircraftCapPrefix = "GC Aircraft Cap ";
     internal const string BuildRadiusPrefix = "GC Build Radius ";
     internal const string DockRadiusPrefix = "GC Naval Dock Radius ";
     internal const string AircraftCapturePrefix = "GC Aircraft Capture ";
@@ -54,7 +55,7 @@ internal static class CommanderMapSettings
     {
         BuildersPrefix, HeadStartPrefix, AiIncomePrefix, AiCommandersPrefix, EnemyModePrefix,
         EnemyDifficultyPrefix, HumanTeamsPrefix, FactoryVehiclesPrefix, FriendlyAiOffPrefix,
-        BanVotePrefix, BansPerSidePrefix, UnitCapPrefix, ShipCapPrefix, ArtilleryCapPrefix,
+        BanVotePrefix, BansPerSidePrefix, UnitCapPrefix, ShipCapPrefix, ArtilleryCapPrefix, AircraftCapPrefix,
         BuildRadiusPrefix, DockRadiusPrefix, AircraftCapturePrefix,
     };
 

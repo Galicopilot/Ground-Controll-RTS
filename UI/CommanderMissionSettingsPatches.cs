@@ -283,6 +283,17 @@ internal static class CommanderMissionSettingsPatches
             () => Mathf.RoundToInt(Read(__instance, CommanderMapSettings.ArtilleryCapPrefix, 0)),
             value => Write(__instance, CommanderMapSettings.ArtilleryCapPrefix, value),
             KindCapLabel);
+        AddSlider(
+            refreshers,
+            kindCaps,
+            sliderTemplate,
+            "Aircraft Cap",
+            "Most aircraft each side may have up at once, for players and the AI alike. 0 turns it off.",
+            0,
+            CommanderUnitCap.MaxKindCap,
+            () => Mathf.RoundToInt(Read(__instance, CommanderMapSettings.AircraftCapPrefix, 0)),
+            value => Write(__instance, CommanderMapSettings.AircraftCapPrefix, value),
+            KindCapLabel);
 
         if (unitSelect != null && addUnitButton != null)
         {
