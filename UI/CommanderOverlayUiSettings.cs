@@ -237,15 +237,17 @@ internal sealed partial class CommanderOverlayUi
         GUI.Box(new Rect(12f, y, width, height), string.Empty, CommanderUiTheme.Panel);
 
         Rect view = new(16f, y + 8f, width - 8f, height - 16f);
+        float innerWidth = view.width - 20f;
+        float keyColumn = innerWidth * 0.34f;
+        float noteColumn = innerWidth * 0.30f;
+        float actionWidth = innerWidth - keyColumn - noteColumn - 16f;
         float contentHeight = 0f;
         for (int i = 0; i < shortcutEntries.Count; i++)
         {
-            contentHeight += shortcutEntries[i].IsSection ? 34f : 30f;
+            contentHeight += shortcutEntries[i].IsSection ? 34f : ShortcutRowHeight(shortcutEntries[i], actionWidth, keyColumn, noteColumn) + 2f;
         }
 
-        Rect inner = new(0f, 0f, view.width - 20f, Mathf.Max(view.height, contentHeight + 4f));
-        float keyColumn = inner.width * 0.34f;
-        float noteColumn = inner.width * 0.30f;
+        Rect inner = new(0f, 0f, innerWidth, Mathf.Max(view.height, contentHeight + 4f));
         shortcutScroll = GUI.BeginScrollView(view, shortcutScroll, inner);
         float rowY = 0f;
         for (int i = 0; i < shortcutEntries.Count; i++)
@@ -258,18 +260,34 @@ internal sealed partial class CommanderOverlayUi
                 continue;
             }
 
-            float actionWidth = inner.width - keyColumn - noteColumn - 16f;
-            GUI.Label(new Rect(8f, rowY, actionWidth, 28f), entry.Action, CommanderUiTheme.Label);
-            GUI.Label(new Rect(8f + actionWidth, rowY, keyColumn, 28f), entry.Keys, CommanderUiTheme.Header);
+            float rowHeight = ShortcutRowHeight(entry, actionWidth, keyColumn, noteColumn);
+            GUI.Label(new Rect(8f, rowY, actionWidth, rowHeight), entry.Action, CommanderUiTheme.Label);
+            GUI.Label(new Rect(8f + actionWidth, rowY, keyColumn, rowHeight), entry.Keys, CommanderUiTheme.Header);
             if (entry.Note.Length > 0)
             {
-                GUI.Label(new Rect(12f + actionWidth + keyColumn, rowY, noteColumn, 28f), entry.Note, CommanderUiTheme.MutedLabel);
+                GUI.Label(new Rect(12f + actionWidth + keyColumn, rowY, noteColumn, rowHeight), entry.Note, CommanderUiTheme.MutedLabel);
             }
 
-            rowY += 30f;
+            rowY += rowHeight + 2f;
         }
 
         GUI.EndScrollView();
+    }
+
+    // Rows grow to their tallest wrapped column; a fixed 28 px row cut long notes off after one line.
+    private float ShortcutRowHeight(CommanderShortcutReference.Entry entry, float actionWidth, float keyColumn, float noteColumn)
+    {
+        shortcutMeasure.text = entry.Action;
+        float height = Mathf.Max(28f, CommanderUiTheme.Label.CalcHeight(shortcutMeasure, actionWidth));
+        shortcutMeasure.text = entry.Keys;
+        height = Mathf.Max(height, CommanderUiTheme.Header.CalcHeight(shortcutMeasure, keyColumn));
+        if (entry.Note.Length > 0)
+        {
+            shortcutMeasure.text = entry.Note;
+            height = Mathf.Max(height, CommanderUiTheme.MutedLabel.CalcHeight(shortcutMeasure, noteColumn));
+        }
+
+        return height;
     }
 
     private void DrawSettingsTab(Rect rect, string label, int tab)

@@ -65,6 +65,7 @@ internal sealed partial class CommanderOverlayUi : ICommanderActivate, ICommande
     private readonly List<int> chipCounts = new();
     private readonly List<string> chipLabels = new();
     private readonly List<CommanderShortcutReference.Entry> shortcutEntries = new();
+    private readonly GUIContent shortcutMeasure = new();
     private readonly List<CommanderSupplyStoreService.BaseSupply> baseSupplyRows = new();
     private readonly List<string> loadoutRows = new();
     private readonly List<string> loadoutNames = new();

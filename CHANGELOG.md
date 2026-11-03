@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Long lines in Settings > Shortcuts are no longer cut off.
 - Every load a transport carries now follows UNIT PRICES. A new CARGO list holds the loads that had no row of their own, such as fuel, supply and radar containers.
 - container being moved by the camera during its unload.
 
