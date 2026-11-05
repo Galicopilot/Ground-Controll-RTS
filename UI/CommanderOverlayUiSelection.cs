@@ -483,9 +483,9 @@ internal sealed partial class CommanderOverlayUi
         float y = selectionMoreRect.y + 5f;
 
         GUI.enabled = oldEnabled && advanced && moveService.HasCommandableSelection;
-        if (GUI.Button(
+        if (CommanderUiTheme.FitWordButton(
             new Rect(x, y, width, 32f),
-            new GUIContent("RELEASE TO AI", "Hands the selection back to the game's own AI, which picks its own moves and targets."),
+            new GUIContent("AI CONTROL", "Hands the selection back to the game's own AI, which picks its own moves and targets."),
             CommanderUiTheme.Button))
         {
             moveService.ResumeAiForSelectedUnits();
@@ -501,7 +501,7 @@ internal sealed partial class CommanderOverlayUi
             ? "Whether the vehicles this depot builds keep to the roads or drive straight across country."
             : "Whether the selected ground vehicles keep to the roads or drive straight across country.";
         GUI.enabled = oldEnabled && canToggleRoad;
-        if (GUI.Button(
+        if (CommanderUiTheme.FitWordButton(
             new Rect(x, y, width, 32f),
             new GUIContent(roadEnabled ? "ROADS: ON" : "ROADS: OFF", roadTip),
             roadEnabled ? CommanderUiTheme.Button : CommanderUiTheme.SelectedButton))
@@ -519,7 +519,7 @@ internal sealed partial class CommanderOverlayUi
         x += width + 6f;
 
         GUI.enabled = oldEnabled && advanced;
-        if (GUI.Button(
+        if (CommanderUiTheme.FitWordButton(
             new Rect(x, y, width, 32f),
             new GUIContent(
                 selectionService.IsCurrentSelectionPinned ? "UNPIN" : "PIN",
@@ -535,7 +535,7 @@ internal sealed partial class CommanderOverlayUi
         {
             GUI.enabled = oldEnabled;
             CommanderWaypointAction action = moveService.PendingWaypointAction;
-            if (GUI.Button(
+            if (CommanderUiTheme.FitWordButton(
                 new Rect(x, y, width * 1.5f, 32f),
                 new GUIContent(
                     GetWaypointActionLabel(action) + "  >",
@@ -560,7 +560,7 @@ internal sealed partial class CommanderOverlayUi
             ? "Whether the vehicles this depot builds roll out with their radar on or off. Off, anti-radiation missiles cannot home on them."
             : "Switches the radar of every selected unit and building on or off. Off, anti-radiation missiles cannot home on them, but they see nothing on radar either.";
         GUI.enabled = oldEnabled && hasRadar;
-        if (GUI.Button(
+        if (CommanderUiTheme.FitWordButton(
             new Rect(x, y, width, 32f),
             new GUIContent(!hasRadar ? "NO RADAR" : radarOn ? "RADAR: ON" : "RADAR: OFF", radarTip),
             hasRadar && !radarOn ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
@@ -579,10 +579,10 @@ internal sealed partial class CommanderOverlayUi
         {
             x += width + 6f;
             GUI.enabled = oldEnabled;
-            if (GUI.Button(
+            if (CommanderUiTheme.FitWordButton(
                 new Rect(x, y, width, 32f),
                 new GUIContent(
-                    "IGNORE ARTILLERY",
+                    "IGNORE ARTY",
                     "The selected radar SAMs let artillery shells and rockets through and keep their missiles for aircraft and guided missiles."),
                 ignoreArtillery ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
             {
