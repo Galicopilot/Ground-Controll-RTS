@@ -1574,6 +1574,8 @@ internal sealed partial class CommanderAirCommandService
         // already sitting on the deck means getting it airborne before it is told to fly anywhere.
         ClearLandingOrder(aircraft, mission, release: !alreadyDown);
 
+        LeaveBaseGameLanding(aircraft);
+
         if (!append)
         {
             mission.Route.Clear();
