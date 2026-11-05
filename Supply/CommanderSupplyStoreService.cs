@@ -89,6 +89,8 @@ internal sealed class CommanderSupplyStoreService : ICommanderTickPersistent, IC
 
     private static float? chosenPurchasePercent;
 
+    private static float bunkerAmmoKg;
+
     private readonly Dictionary<Unit, float> fuel = new();
     private readonly List<Unit> storeSweep = new();
     private readonly List<Unit> scratch = new();
@@ -394,6 +396,30 @@ internal sealed class CommanderSupplyStoreService : ICommanderTickPersistent, IC
     {
         float unit = Mathf.Max(1f, depotKg * CommanderSettings.SupplyPurchaseFraction);
         return pricePerPurchase * Mathf.Max(0f, kg) / unit;
+    }
+
+    /// <summary>
+    /// A munitions bunker's ammunition shelf, read off the loaded bunker prefabs. A base BUY is priced
+    /// against its largest shelf, so anything priced against this costs the same per kilogram.
+    /// </summary>
+    internal static float GetBunkerAmmoKg()
+    {
+        if (bunkerAmmoKg <= 0f)
+        {
+            foreach (BuildingDefinition building in Resources.FindObjectsOfTypeAll<BuildingDefinition>())
+            {
+                Rearmer? rearmer = building != null && building.buildingType == BuildingType.AMMO && building.unitPrefab != null
+                    ? building.unitPrefab.GetComponentInChildren<Rearmer>(true)
+                    : null;
+                if (rearmer != null)
+                {
+                    // A prefab never ran Awake, which is what copies Capacity into maxCapacity.
+                    bunkerAmmoKg = Mathf.Max(bunkerAmmoKg, rearmer.GetMaxCapacity(), rearmer.Capacity);
+                }
+            }
+        }
+
+        return bunkerAmmoKg > 0f ? bunkerAmmoKg : MunitionsTruckAmmoKg;
     }
 
     internal static float GetBaseWanted(float have, float max, float percent = 0f)

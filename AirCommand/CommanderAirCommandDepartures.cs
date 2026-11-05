@@ -65,6 +65,10 @@ internal sealed partial class CommanderAirCommandService
 
     private const float DepartureClearAltitudeMeters = 50f;
 
+    /// <summary>Ground traffic this far from a runway's edge holds landers on it; farther out on the
+    /// apron it is no business of the runway's, and holding every lander for it ran landings one at a time.</summary>
+    private const float RunwayTrafficMeters = 60f;
+
     /// <summary>A takeoff blocked this long by aircraft standing on the runway ahead gives up.</summary>
     private const float BlockedGiveUpSeconds = 90f;
 
@@ -389,7 +393,7 @@ internal sealed partial class CommanderAirCommandService
     /// (rolling out or taxiing in), or with <paramref name="inbound"/> false one taxiing out to the
     /// runway. Dustbowl has one taxiway for both, and traffic in both directions at once met head on.
     /// </summary>
-    internal static bool IsTaxiingAt(Airbase field, Aircraft asker, bool inbound, float nearAskerMeters = 0f, float minSpeed = 0f)
+    internal static bool IsTaxiingAt(Airbase field, Aircraft asker, bool inbound, float nearAskerMeters = 0f, float minSpeed = 0f, Airbase.Runway? nearRunway = null)
     {
         if (field.center == null)
         {
@@ -411,7 +415,8 @@ internal sealed partial class CommanderAirCommandService
                 || other.pilots.Length == 0
                 || other.pilots[0] == null
                 || (other.transform.position - centre).sqrMagnitude > ApronMeters * ApronMeters
-                || (nearAskerMeters > 0f && (other.transform.position - asker.transform.position).sqrMagnitude > nearAskerMeters * nearAskerMeters))
+                || (nearAskerMeters > 0f && (other.transform.position - asker.transform.position).sqrMagnitude > nearAskerMeters * nearAskerMeters)
+                || (nearRunway != null && !IsBesideRunway(nearRunway, other)))
             {
                 continue;
             }
@@ -435,6 +440,19 @@ internal sealed partial class CommanderAirCommandService
         }
 
         return false;
+    }
+
+    /// <summary>On the runway or within <see cref="RunwayTrafficMeters"/> of its edge: entering, crossing or leaving it.</summary>
+    internal static bool IsBesideRunway(Airbase.Runway runway, Aircraft other)
+    {
+        if (runway.Start == null)
+        {
+            return true;
+        }
+
+        Vector3 offset = runway.GetNearestPoint(other.transform.position, extend: false) - other.transform.position;
+        offset.y = 0f;
+        return offset.magnitude < (runway.GetWidth() * 0.5f) + RunwayTrafficMeters;
     }
 
     internal static bool IsStandDeparture(Aircraft aircraft, AIPilotTaxiState taxi)
@@ -763,15 +781,15 @@ internal sealed partial class CommanderAirCommandService
         return head == null || head.disabled || ReferenceEquals(head, aircraft);
     }
 
-    /// <summary>Something on the pavement ahead and nearer than <paramref name="withinMeters"/> along the runway.</summary>
-    internal static bool IsRunwayBlockedAhead(Airbase.Runway.RunwayUsage usage, Aircraft aircraft, float withinMeters)
-    {
-        return FindAircraftAhead(usage, aircraft, withinMeters) != null;
-    }
-
+    /// <summary>
+    /// Something on the pavement ahead, and nearer than <paramref name="withinMeters"/> along the
+    /// runway counting how far it must still roll (<see cref="RollingLead"/>). The direction must be
+    /// normalised: the runway's own is as long as the runway, and unnormalised a rollout never braked
+    /// for anyone ahead.
+    /// </summary>
     internal static Aircraft? FindAircraftAhead(Airbase.Runway.RunwayUsage usage, Aircraft aircraft, float withinMeters = float.MaxValue)
     {
-        Vector3 direction = usage.Runway.GetDirection(usage.Reverse);
+        Vector3 direction = usage.Runway.GetDirection(usage.Reverse).normalized;
         Vector3 position = aircraft.transform.position;
         List<Aircraft> all = UnitRegistry.allAircraft;
         for (int i = 0; i < all.Count; i++)
@@ -782,7 +800,7 @@ internal sealed partial class CommanderAirCommandService
                 && !other.disabled
                 && other.radarAlt < 5f
                 && Vector3.Dot(other.transform.position - position, direction) is > 0f and var along
-                && along < withinMeters
+                && along + RollingLead(other, direction) < withinMeters
                 && IsOnPavement(usage.Runway, other))
             {
                 return other;

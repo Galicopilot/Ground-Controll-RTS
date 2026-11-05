@@ -77,6 +77,15 @@ internal sealed partial class CommanderAirCommandService
     /// <summary>How often one airframe may be lifted off a strip it could not fly itself off.</summary>
     private const int MaxGroundRescues = 3;
 
+    /// <summary>See <see cref="EjectStuckOnGround"/>. Longer than every other ground rescue (90 s), so
+    /// this only catches what they missed.</summary>
+    private const float StuckOnRunwaySeconds = 120f;
+    private const float StuckOnGroundSeconds = 240f;
+    private const float GroundStillMeters = 5f;
+
+    /// <summary>How long an AI side's aeroplane waits on a stand for stock before going to reserve.</summary>
+    private const float AiGroundedReserveSeconds = 60f;
+
     /// <summary>Fraction of an aircraft's parts detached or destroyed before it counts as a wreck. The
     /// base game's own figure, used by <c>AIPilotCombatModes</c> and <c>AIPilotLandingState</c> to give up.</summary>
     private const float WreckedDetachedRatio = 0.12f;
@@ -1780,9 +1789,28 @@ internal sealed partial class CommanderAirCommandService
             }
 
             mission.ResupplyReadyAt = Time.time + 15f;
+
+            // An AI side never buys the stock it waits for, so it would sit on the stand for good and
+            // keep the next lander off it. Its sortie is over: back to reserve.
+            if (mission.GroundedSince <= 0f)
+            {
+                mission.GroundedSince = Time.time;
+            }
+            else if (Time.time - mission.GroundedSince > AiGroundedReserveSeconds
+                && !IsHumanLed(mission.Hq, CommanderGameAccess.GetLocalHq()))
+            {
+                CommanderPlugin.Log.LogInfo(
+                    $"{CommanderGameAccess.GetUnitLabel(aircraft)} grounded at {CommanderCaptureService.GetAirbaseLabel(airbase)} "
+                        + $"({message}); its pilot ejects into reserve.");
+                mission.Intent = LandingIntent.Reserve;
+                mission.ResupplyReadyAt = Time.time + ReserveEjectTimeoutSeconds;
+                EjectIntoReserve(aircraft, mission);
+            }
+
             return;
         }
 
+        mission.GroundedSince = 0f;
         mission.ShortfallReason = string.Empty;
 
         // A completed sortie is proof the airframe can fly off this field, so the rescue budget is
@@ -1829,6 +1857,89 @@ internal sealed partial class CommanderAirCommandService
         }
     }
 
+    /// <summary>
+    /// Last resort after every other rescue: an aeroplane that has not moved
+    /// <see cref="GroundStillMeters"/> for <see cref="StuckOnRunwaySeconds"/> on a runway (or
+    /// <see cref="StuckOnGroundSeconds"/> taxiing elsewhere) at a field its side holds ejects into
+    /// reserve. Two that touch on the strip both brake for each other, and the game's taxi zeroes its
+    /// stuck timer while braking, so they stood there blocking every lander for the rest of the match.
+    /// </summary>
+    private void EjectStuckOnGround()
+    {
+        landingSweep.Clear();
+        foreach (KeyValuePair<Aircraft, AirMission> entry in missions)
+        {
+            Aircraft aircraft = entry.Key;
+            AirMission mission = entry.Value;
+            Pilot? pilot = aircraft == null || aircraft.pilots == null || aircraft.pilots.Length == 0 ? null : aircraft.pilots[0];
+            if (pilot == null
+                || aircraft!.disabled
+                || aircraft.Player != null
+                || aircraft.HasEjected()
+                || aircraft.radarAlt > ParkedRadarAltMeters
+                || IsRotary(aircraft)
+                || mission.Intent == LandingIntent.Reserve
+                || !mission.Hq.AnyNearAirbase(aircraft.transform.position, out Airbase field))
+            {
+                mission.GroundStillSince = 0f;
+                continue;
+            }
+
+            Vector3 at = aircraft.transform.position;
+            if (mission.GroundStillSince <= 0f || (at - mission.GroundStillAt).sqrMagnitude > GroundStillMeters * GroundStillMeters)
+            {
+                mission.GroundStillAt = at;
+                mission.GroundStillSince = Time.time;
+                continue;
+            }
+
+            // A capture or STANDBY park is meant to stand; one parked for service off the runway too.
+            // Centre on the pavement: one holding short for clearance is waiting, not in the way.
+            bool onRunway = false;
+            for (int r = 0; field.runways != null && r < field.runways.Length && !onRunway; r++)
+            {
+                onRunway = field.runways[r]?.Start != null && IsOnPavement(field.runways[r], aircraft);
+            }
+
+            bool moving = pilot.currentState is AIPilotTaxiState or AIPilotTakeoffState;
+            bool parkedInTheWay = onRunway && mission.Intent is not (LandingIntent.Capture or LandingIntent.Hold);
+            float limit = onRunway ? StuckOnRunwaySeconds : StuckOnGroundSeconds;
+            if ((moving || parkedInTheWay) && Time.time - mission.GroundStillSince > limit)
+            {
+                landingSweep.Add(aircraft);
+            }
+        }
+
+        for (int i = 0; i < landingSweep.Count; i++)
+        {
+            Aircraft aircraft = landingSweep[i];
+            if (aircraft == null
+                || aircraft.disabled
+                || !missions.TryGetValue(aircraft, out AirMission mission)
+                || !mission.Hq.AnyNearAirbase(aircraft.transform.position, out Airbase field))
+            {
+                continue;
+            }
+
+            CommanderPlugin.Log.LogInfo(
+                $"{CommanderGameAccess.GetUnitLabel(aircraft)} stood stuck {Time.time - mission.GroundStillSince:0} s at "
+                    + $"{CommanderCaptureService.GetAirbaseLabel(field)} ('{aircraft.pilots[0].currentState?.GetType().Name}'); its pilot ejects into reserve.");
+
+            // As a RESERVE landing, so the ejection guard lets it go and the landing tick finishes it
+            // (stocked without the ejection if it is not still in time).
+            aircraft.pilots[0].SwitchState(aircraft.pilots[0].parkedState);
+            ControlInputs inputs = aircraft.GetInputs();
+            inputs.throttle = 0f;
+            inputs.brake = 1f;
+            mission.LandingBase = field;
+            mission.Intent = LandingIntent.Reserve;
+            mission.LandingIssued = true;
+            mission.Parked = true;
+            mission.ResupplyReadyAt = Time.time + ReserveEjectTimeoutSeconds;
+            EjectIntoReserve(aircraft, mission);
+        }
+    }
+
     /// <summary>Lifts clear anything the ejection prefix caught on the ground this sweep.</summary>
     private void ProcessGroundRescues()
     {
@@ -1855,6 +1966,7 @@ internal sealed partial class CommanderAirCommandService
 
         UntaskedRescues.Clear();
         ReleaseHeldWrecks();
+        EjectStuckOnGround();
         landingSweep.Clear();
         foreach (KeyValuePair<Aircraft, AirMission> entry in missions)
         {

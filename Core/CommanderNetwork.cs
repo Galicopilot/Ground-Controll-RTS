@@ -159,6 +159,35 @@ internal sealed class CommanderNetwork : ICommanderTickPersistent
     /// <summary>The connection whose request the host is carrying out, or null outside one.</summary>
     internal static INetworkPlayer? Sender { get; private set; }
 
+    /// <summary>
+    /// The host has someone else in its match. Game speed is then held at 1x: the game stamps
+    /// position updates with the host's scaled clock, and a guest's clock runs in real time and
+    /// catches up at 8% at most, so a sped-up host leaves every unit and weapon lagging and
+    /// snapping on the guest's screen.
+    /// </summary>
+    internal static bool HostHasGuests
+    {
+        get
+        {
+            NetworkServer? server = NetworkManagerNuclearOption.i?.Server;
+            if (server == null || !server.Active)
+            {
+                return false;
+            }
+
+            IReadOnlyList<INetworkPlayer> players = server.AuthenticatedPlayers;
+            for (int i = 0; i < players.Count; i++)
+            {
+                if (!players[i].IsHost)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     /// <summary>The host's game speed, for a guest's speed buttons: <c>Time.timeScale</c> is not networked.</summary>
     internal static float HostTimeScale { get; private set; } = 1f;
 
@@ -182,6 +211,12 @@ internal sealed class CommanderNetwork : ICommanderTickPersistent
             {
                 boundServer = server.MessageHandler;
                 boundServer.RegisterHandler<CommanderNetMessage>(OnHostMessage, allowUnauthenticated: false);
+            }
+
+            // Someone joined a sped-up match: back to 1x. Pause (0) is the game's own and synced.
+            if (Time.timeScale > 1f && HostHasGuests)
+            {
+                TimeScaleManager.Scale = 1f;
             }
 
             if (CommanderScheduler.IsDueRealtime(ref nextHelloAt, HelloIntervalSeconds))

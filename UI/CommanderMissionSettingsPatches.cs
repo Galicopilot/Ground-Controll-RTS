@@ -49,7 +49,9 @@ internal static class CommanderMissionSettingsPatches
 
     internal static string EnemyModeLabel(int value)
     {
-        return value == CommanderEnemyCommanderService.ModeOff ? "AUTO" : CommanderEnemyCommanderService.GetModeLabel(value);
+        return CommanderEnemyCommanderService.GetModeLabel(value == CommanderEnemyCommanderService.ModeMission
+            ? CommanderEnemyCommanderService.ModeMission
+            : CommanderEnemyCommanderService.ModeMatched);
     }
 
     /// <summary>0 is off, then each cap mode one up.</summary>
@@ -196,8 +198,8 @@ internal static class CommanderMissionSettingsPatches
             sliderTemplate,
             unitSelect,
             "Enemy Commander",
-            "AUTO is on wherever AI Commanders puts one. MATCHED gives the AI your income, MISSION FUNDS the mission's.",
-            CommanderEnemyCommanderService.ModeOff,
+            "How the AI commanders are funded: MATCHED gives the AI your income, MISSION FUNDS the mission's.",
+            CommanderEnemyCommanderService.ModeMatched,
             CommanderEnemyCommanderService.ModeMission,
             () => Mathf.RoundToInt(Read(__instance, CommanderMapSettings.EnemyModePrefix, CommanderSettings.EnemyCommanderMode)),
             value => Write(__instance, CommanderMapSettings.EnemyModePrefix, value),

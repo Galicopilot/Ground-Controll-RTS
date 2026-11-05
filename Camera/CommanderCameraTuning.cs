@@ -147,6 +147,18 @@ internal static class CommanderCameraTuning
     }
 
     /// <summary>
+    /// Ambient light floor while the goggles are on: picked so that after the volume's
+    /// <paramref name="exposureStops"/> it lands at <paramref name="fill"/>, roughly how a shaded
+    /// surface reads in daylight. Dividing out the exposure is what keeps it from whiting out
+    /// whatever the game's serialized gain is. Faded out in daylight like the rest.
+    /// </summary>
+    internal static float NightVisionFillFloor(float fill, float exposureStops, float ambientLight)
+    {
+        float daylight = NightVisionDaylight(ambientLight);
+        return Mathf.Max(0f, fill) * Mathf.Pow(2f, -exposureStops) * (1f - daylight);
+    }
+
+    /// <summary>
     /// One runnable check, run once from <see cref="CommanderPlugin"/> at load and logged to the
     /// BepInEx console. It guards the two pieces of camera maths that are silently wrong rather
     /// than obviously broken: a pitch clamp fed a 0-360 angle, and the framing test.
@@ -194,6 +206,8 @@ internal static class CommanderCameraTuning
         Expect(failures, "night contrast dark", NightVisionContrast(10f, 0f, 30f), 40f);
         Expect(failures, "night contrast daylight", NightVisionContrast(10f, AmbientLit, 30f), 10f);
         Expect(failures, "night contrast clamps", NightVisionContrast(90f, 0f, 30f), 100f);
+        Expect(failures, "night fill dark", NightVisionFillFloor(0.5f, 2f, 0f), 0.125f);
+        Expect(failures, "night fill daylight", NightVisionFillFloor(0.5f, 2f, AmbientLit), 0f);
 
         if (failures.Count == 0)
         {

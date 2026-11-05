@@ -407,11 +407,11 @@ internal sealed partial class CommanderSupplyHeliService : ICommanderActivate, I
             return vehicle.vehicleType == VehicleType.RDR ? GetRadarTruckPrice(vehicle) : CommanderEconomyService.PriceOf(vehicle);
         }
 
-        // Against a munitions truck's shelf: a bunker's size is asset data, and it has to be one number.
+        // Against a bunker's shelf, so a tonne in a container costs what a tonne bought at the bunker does.
         Rearmer? rearmer = cargo.unitPrefab.GetComponentInChildren<Rearmer>(true);
         return rearmer != null && rearmer.Capacity > 0f
             ? CommanderSupplyStoreService.GetBaseCost(
-                CommanderSettings.SupplyAmmoPurchaseCost, rearmer.Capacity, CommanderSupplyStoreService.MunitionsTruckAmmoKg)
+                CommanderSettings.SupplyAmmoPurchaseCost, rearmer.Capacity, CommanderSupplyStoreService.GetBunkerAmmoKg())
             : CommanderEconomyService.PriceOf(cargo);
     }
 

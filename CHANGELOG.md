@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Night vision is now close to daylight: a Fill light setting lights unlit ground and fog evenly while the goggles are on, and a new Tint button picks green, white phosphor or full colour (the default). Press RESET NIGHT VISION to get the new defaults.
 - A transport that has delivered its cargo goes straight into a RESERVE mission: it returns to the nearest friendly base, the crew ejects and the aircraft goes back into reserve.
 
 ### Fixed
@@ -11,6 +12,8 @@
 - Long lines in Settings > Shortcuts are no longer cut off.
 - Every load a transport carries now follows UNIT PRICES. A new CARGO list holds the loads that had no row of their own, such as fuel, supply and radar containers.
 - container being moved by the camera during its unload.
+- Aircraft landing one after another touch down behind one still rolling out instead of going round, as long as it is past where they stop.
+- Aircraft landing at K92 Highway Strip no longer turn onto final far too high, dive and go round again and again.
 
 ## 1.0.0.0
 

@@ -68,7 +68,7 @@ internal sealed partial class CommanderAirCommandService
     internal static string GetAirbaseLabel(AirbaseOption option)
     {
         string distance = UnitConverter.DistanceReading(option.Distance) ?? $"{option.Distance:F0} m";
-        return $"{(option.Ready ? "READY" : "BUSY")}  |  {option.Label}  |  {distance}";
+        return $"{option.Label}  |  {distance}";
     }
 
     /// <summary>Friendly AI aircraft that are airborne or parked and not already on a Commander mission.</summary>
@@ -110,34 +110,8 @@ internal sealed partial class CommanderAirCommandService
             return;
         }
 
-        // The two area-less modes are answered here rather than by asking for a circle nobody uses.
-        if (SelectedMode == AirCommandMode.Autopilot)
+        if (TryAreaLessOrder(aircraft, SelectedMode))
         {
-            if (ForwardAir("air.autopilot", aircraft))
-            {
-                return;
-            }
-
-            RemoveMission(aircraft);
-            CommanderSelectionService.Instance?.RemovePinnedUnit(aircraft);
-            ReturnToCombatState(aircraft);
-            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} released to autopilot.");
-            return;
-        }
-
-        if (SelectedMode == AirCommandMode.Standby)
-        {
-            if (ForwardAir("air.standby", aircraft))
-            {
-                return;
-            }
-
-            Airbase? field = FindNearestOwnedAirbase(aircraft);
-            if (field == null || !SetAircraftLandingOrder(aircraft, field, LandingIntent.Hold, append: false))
-            {
-                SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly field to stand by on.");
-            }
-
             return;
         }
 
@@ -147,6 +121,33 @@ internal sealed partial class CommanderAirCommandService
         OpenOrderMap();
         UpdatePendingAreaPreview();
         SetStatus($"Select the {GetModeLabel(SelectedMode)} mission area for {CommanderGameAccess.GetUnitLabel(aircraft)}.");
+    }
+
+    /// <summary>
+    /// Re-tasks a package that is already flying as another mission type over the same area, so
+    /// STANDBY to AIR SUPERIORITY is one click rather than a new circle. AUTOPILOT and STANDBY have
+    /// no area and take the same paths TASK gives them.
+    /// </summary>
+    internal void ChangeMissionMode(Aircraft aircraft, AirCommandMode mode)
+    {
+        if (TryAreaLessOrder(aircraft, mode) || !missions.TryGetValue(aircraft, out AirMission mission))
+        {
+            return;
+        }
+
+        if (ForwardAir(
+            "air.adopt",
+            aircraft,
+            CommanderNetwork.Num((int)mode),
+            CommanderNetwork.Position(mission.AreaCenter),
+            CommanderNetwork.Num(mission.Radius)))
+        {
+            return;
+        }
+
+        SetStatus(TryAdoptAircraft(aircraft, mode, mission.AreaCenter, mission.Radius)
+            ? $"{CommanderGameAccess.GetUnitLabel(aircraft)} re-tasked with a {GetModeLabel(mode)} mission."
+            : "That aircraft can no longer be tasked.");
     }
 
     /// <summary>
@@ -724,12 +725,6 @@ internal sealed partial class CommanderAirCommandService
             return;
         }
 
-        if (!airbase.Ready)
-        {
-            RefuseLaunch($"{airbase.Label}: every hangar that holds this aircraft is busy until the last one out clears its doors. Pick another field or wait.");
-            return;
-        }
-
         // Refuse before the map opens, not after the area is placed. SpawnMission checks the same
         // thing, but by then the player has picked a target and watched nothing happen, which reads
         // as a broken button rather than an empty treasury.
@@ -826,6 +821,43 @@ internal sealed partial class CommanderAirCommandService
         return IsRotaryAirframe(definition) ? "ROTARY" : "FIXED WING";
     }
 
+    /// <summary>The two area-less modes, answered here rather than by asking for a circle nobody uses.
+    /// True when <paramref name="mode"/> was one of them.</summary>
+    private bool TryAreaLessOrder(Aircraft aircraft, AirCommandMode mode)
+    {
+        if (mode == AirCommandMode.Autopilot)
+        {
+            if (ForwardAir("air.autopilot", aircraft))
+            {
+                return true;
+            }
+
+            RemoveMission(aircraft);
+            CommanderSelectionService.Instance?.RemovePinnedUnit(aircraft);
+            ReturnToCombatState(aircraft);
+            SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} released to autopilot.");
+            return true;
+        }
+
+        if (mode == AirCommandMode.Standby)
+        {
+            if (ForwardAir("air.standby", aircraft))
+            {
+                return true;
+            }
+
+            Airbase? field = FindNearestOwnedAirbase(aircraft);
+            if (field == null || !SetAircraftLandingOrder(aircraft, field, LandingIntent.Hold, append: false))
+            {
+                SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} has no friendly field to stand by on.");
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// The mission a plain travel or attack point should carry. AUTOPILOT and STANDBY are launch
     /// settings, not target filters, so an order given while one of them is selected falls back to
@@ -862,6 +894,10 @@ internal sealed partial class CommanderAirCommandService
             mission.Mode = mode;
             mission.AreaCenter = center;
             mission.Radius = radius;
+
+            // A re-task (CHANGE MISSION) outranks a standby or resupply landing, the same as any plain order.
+            ClearLandingOrder(aircraft, mission, release: true);
+            LeaveBaseGameLanding(aircraft);
         }
 
         mission.Returning = false;

@@ -475,8 +475,9 @@ internal sealed partial class CommanderOverlayUi
         // NEXT WP gets a column and a half: "NEXT WP: HOLD 30s" in a plain column wrapped onto a
         // second line, and a button too short for two lines shows the top and bottom halves of each.
         bool movable = moveService.HasCommandableSelection;
-        float columns = movable ? 5.5f : 4f;
-        float gaps = movable ? 4f : 3f;
+        bool radarSam = radarService.TryGetSelectionIgnoreArtillery(out bool ignoreArtillery);
+        float columns = (movable ? 5.5f : 4f) + (radarSam ? 1f : 0f);
+        float gaps = (movable ? 4f : 3f) + (radarSam ? 1f : 0f);
         float width = (selectionMoreRect.width - 28f - (gaps * 6f)) / columns;
         float x = selectionMoreRect.x + 14f;
         float y = selectionMoreRect.y + 5f;
@@ -571,6 +572,21 @@ internal sealed partial class CommanderOverlayUi
             else
             {
                 radarService.ToggleSelectionRadar();
+            }
+        }
+
+        if (radarSam)
+        {
+            x += width + 6f;
+            GUI.enabled = oldEnabled;
+            if (GUI.Button(
+                new Rect(x, y, width, 32f),
+                new GUIContent(
+                    "IGNORE ARTILLERY",
+                    "The selected radar SAMs let artillery shells and rockets through and keep their missiles for aircraft and guided missiles."),
+                ignoreArtillery ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
+            {
+                radarService.ToggleSelectionIgnoreArtillery();
             }
         }
 
@@ -883,6 +899,17 @@ internal sealed partial class CommanderOverlayUi
             if (focused is Aircraft aircraft)
             {
                 serviceText = CommanderAirCommandService.Instance?.GetServiceStatus(aircraft) ?? string.Empty;
+                FlareEjector[] ejectors = aircraft.GetComponentsInChildren<FlareEjector>();
+                if (ejectors.Length > 0)
+                {
+                    int flares = 0;
+                    foreach (FlareEjector ejector in ejectors)
+                    {
+                        flares += ejector.GetAmmo();
+                    }
+
+                    fuelText += $"   FLARE : {flares}";
+                }
             }
             else if (IsReloading(focused))
             {

@@ -382,6 +382,14 @@ internal sealed partial class CommanderAirCommandService
         /// <summary>When the taxi to a stand last stopped behind traffic (0: moving).</summary>
         internal float TaxiStoppedSince { get; set; }
 
+        /// <summary>Where and when this airframe last moved on the ground, for <c>EjectStuckOnGround</c>.</summary>
+        internal Vector3 GroundStillAt { get; set; }
+
+        internal float GroundStillSince { get; set; }
+
+        /// <summary>When servicing was first refused for want of stock (0: not grounded).</summary>
+        internal float GroundedSince { get; set; }
+
         /// <summary>Distance to the current travel point at the last 2 s sweep, for the flying-away watch.</summary>
         internal float RouteDistance { get; set; }
 

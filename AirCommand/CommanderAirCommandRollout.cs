@@ -48,6 +48,9 @@ internal sealed partial class CommanderAirCommandService
     /// <summary>Below the flare height, coming down faster than this is a go-around, not a flare.</summary>
     private const float GoAroundSinkRate = 12f;
 
+    /// <summary>Vertical deceleration (m/s²) above which a flare cannot stop the sink in time.</summary>
+    private const float DiveArrestMax = 3f;
+
     /// <summary><c>AIPilotLandingState.LandingMode</c> values (enum order).</summary>
     private const int StabilizedApproachMode = 2;
     private const int TurningToFinalMode = 1;
@@ -64,9 +67,9 @@ internal sealed partial class CommanderAirCommandService
     private const float HoldingHeightMeters = 500f;
     private const float HoldingStackMeters = 100f;
 
-    /// <summary>Let off the hold, an aeroplane turns final once below this, or after the time.</summary>
-    private const float FinalFromHoldMeters = 300f;
-    private const float DescendFromHoldSeconds = 60f;
+    /// <summary>An aeroplane turns final once no higher than this over the pattern point, or after the time.</summary>
+    private const float FinalTurnHighMeters = 150f;
+    private const float DescendFromHoldSeconds = 120f;
     private const int HoldingLevels = 5;
 
     /// <summary>
@@ -77,10 +80,10 @@ internal sealed partial class CommanderAirCommandService
 
     /// <summary>
     /// A second lander may turn final behind one already on final this far ahead of it down the
-    /// runway line (about 45 s at landing speed), and lands while the one ahead is past where it
+    /// runway line (about 30 s at landing speed), and lands while the one ahead is past where it
     /// would stop (<see cref="FindAircraftOnRunway"/>); the rollout brakes for anything left ahead.
     /// </summary>
-    private const float InTrailFinalMeters = 3000f;
+    private const float InTrailFinalMeters = 2000f;
 
     /// <summary>How long a runway's traffic scan is reused.</summary>
     private const float RunwayTrafficSeconds = 0.5f;
@@ -98,6 +101,7 @@ internal sealed partial class CommanderAirCommandService
     private const float GoAroundBelowMeters = 30f;
     private const float GoAroundAboveMeters = 3f;
     private const float GoAroundWidthShare = 0.3f;
+    private const float TrafficCommitMeters = 10f;
 
     /// <summary>
     /// The game's go-around aims 8 m above level over a kilometre, so a jet that was sinking 9 m/s
@@ -344,7 +348,9 @@ internal sealed partial class CommanderAirCommandService
         float stillToRoll = exit != null
             ? Vector3.Dot(exit.position - aircraft.transform.position, direction) + aircraft.maxRadius + RolloutBlockMarginMeters
             : (aircraft.speed * aircraft.speed / (2f * RolloutAssistMax)) + RolloutBlockMarginMeters;
-        if (timeOnGround > 2f && IsRunwayBlockedAhead(usage, aircraft, stillToRoll))
+        Aircraft? blocker = timeOnGround > 2f ? FindAircraftAhead(usage, aircraft, stillToRoll) : null;
+        float stopWithin = float.MaxValue;
+        if (blocker != null)
         {
             inputs.throttle = 0f;
             inputs.brake = 1f;
@@ -353,6 +359,11 @@ internal sealed partial class CommanderAirCommandService
                 HandToTaxi(aircraft, usage);
                 return true;
             }
+
+            // The wheel brakes alone are about 3 m/s^2: stop short of it with the assist as well,
+            // which is what lets a lander touch down behind one still rolling out.
+            stopWithin = Vector3.Dot(blocker.transform.position - aircraft.transform.position, direction)
+                + RollingLead(blocker, direction) - RolloutBlockMarginMeters;
         }
 
         // The game hands over at the exit at whatever speed is left, and the first taxi turn is often
@@ -365,7 +376,7 @@ internal sealed partial class CommanderAirCommandService
             return true;
         }
 
-        AssistRolloutBraking(aircraft, usage, direction, exit, timeOnGround);
+        AssistRolloutBraking(aircraft, usage, direction, exit, timeOnGround, stopWithin);
         aircraft.autopilot.AutoAim(aim.ToGlobalPosition(), aimVelocity: false, ignoreCollisions: true, runwayAlign: true, 1.01f, 5f, followTerrain: false, 0f, Vector3.zero);
         return true;
     }
@@ -420,6 +431,12 @@ internal sealed partial class CommanderAirCommandService
             // spot. A U-turn here can run it off the runway.
             if (best > ExitReachedMeters * ExitReachedMeters)
             {
+                // The taxi disembarks on a null destination once under 1 m/s, so a stopped aeroplane
+                // given only an exit gave up at once, was re-taxied and gave up again, for good. The
+                // game swaps in the nearest stand when it reaches the exit anyway.
+                TaxiDestinationRef(taxi) = field.TryGetNearestServicePoint(aircraft.transform.position, out Transform exitStand)
+                    ? exitStand
+                    : nearest;
                 pathfinder.Shortcut(nearest.GlobalPosition());
                 CommanderPlugin.Log.LogInfo(
                     $"{CommanderGameAccess.GetUnitLabel(aircraft)} stopped on the runway with no exit ahead; taxiing back to the one {Mathf.Sqrt(best):0} m away.");
@@ -567,7 +584,13 @@ internal sealed partial class CommanderAirCommandService
             }
         }
 
-        if (reason == null && height < FlareStartMeters && -aircraft.rb.velocity.y > GoAroundSinkRate)
+        // Diving is a sink the flare cannot take out in the height left. A flat 12 m/s from 100 m sent
+        // ~40 % of all landers round the moment they reached flare height, at 1-2 m/s² to arrest.
+        float sinking = -aircraft.rb.velocity.y;
+        if (reason == null
+            && height < FlareStartMeters
+            && sinking > GoAroundSinkRate
+            && sinking * sinking / (2f * Mathf.Max(height, 1f)) > DiveArrestMax)
         {
             reason = "diving";
         }
@@ -947,18 +970,22 @@ internal sealed partial class CommanderAirCommandService
                 CommanderPlugin.Log.LogInfo($"{CommanderGameAccess.GetUnitLabel(aircraft)} cleared onto final at {field.name}, {aircraft.radarAlt:0} m up.");
             }
 
-            // Released from the hold: descend to pattern height first, otherwise it arrives too high and
-            // goes round. At most DescendFromHoldSeconds.
-            if (HeldOffFinal.Remove(aircraft))
+            // Come down near the game's own pattern point first, otherwise it arrives too high, dives
+            // and goes round. Measured against the pattern point, not the radar: over K92's terrain a
+            // radar gate let Brawlers turn final 500 m up 1.5 km out. At most DescendFromHoldSeconds.
+            HeldOffFinal.Remove(aircraft);
+            Vector3 patternPoint = usage.GetGlideslopeAimpoint(aircraft, aircraft.GetAircraftParameters().turningRadius * 3f, 30f);
+            if (aircraft.transform.position.y - patternPoint.y > FinalTurnHighMeters)
             {
-                DescendingSince[aircraft] = Time.time;
-            }
+                if (!DescendingSince.TryGetValue(aircraft, out float descending))
+                {
+                    DescendingSince[aircraft] = descending = Time.time;
+                }
 
-            if (DescendingSince.TryGetValue(aircraft, out float descending)
-                && aircraft.radarAlt > FinalFromHoldMeters
-                && Time.time - descending < DescendFromHoldSeconds)
-            {
-                return false;
+                if (Time.time - descending < DescendFromHoldSeconds)
+                {
+                    return false;
+                }
             }
 
             DescendingSince.Remove(aircraft);
@@ -1105,7 +1132,7 @@ internal sealed partial class CommanderAirCommandService
     /// no reverse thrust. Adds exactly the deceleration needed to reach taxi speed at the exit (or
     /// <see cref="RolloutEndMarginMeters"/> short of the end), capped at <see cref="RolloutAssistMax"/>.
     /// </summary>
-    private static void AssistRolloutBraking(Aircraft aircraft, Airbase.Runway.RunwayUsage usage, Vector3 direction, Transform? exit, float timeOnGround)
+    private static void AssistRolloutBraking(Aircraft aircraft, Airbase.Runway.RunwayUsage usage, Vector3 direction, Transform? exit, float timeOnGround, float stopWithin)
     {
         if (timeOnGround < RolloutAssistAfterSeconds || aircraft.rb == null || aircraft.speed < RolloutTaxiSpeed)
         {
@@ -1116,6 +1143,7 @@ internal sealed partial class CommanderAirCommandService
         float remaining = exit != null && Vector3.Dot(exit.position - position, direction) > 0f
             ? Vector3.Distance(exit.position, position)
             : Vector3.Dot(usage.GetEnd().position - position, direction) - RolloutEndMarginMeters;
+        remaining = Mathf.Min(remaining, stopWithin);
         float needed = ((aircraft.speed * aircraft.speed) - (RolloutTaxiSpeed * RolloutTaxiSpeed)) / (2f * Mathf.Max(remaining, 30f));
         float assist = Mathf.Clamp(needed - RolloutWheelBraking, 0f, RolloutAssistMax);
         if (assist > 0f)
@@ -1139,7 +1167,10 @@ internal sealed partial class CommanderAirCommandService
         Vector3 offset = usage.Runway.GetNearestPoint(aircraft.transform, extend: true) - aircraft.transform.position;
         offset.y = 0f;
         float allowed = usage.Runway.GetWidth() * GoAroundWidthShare;
-        Aircraft? onRunway = FindAircraftOnRunway(usage.Runway, aircraft, usage);
+
+        // Below this, traffic ahead is braked for on the rollout, not gone round for: a go-around
+        // at 5 m settles onto the runway at full throttle and runs into it.
+        Aircraft? onRunway = HeightOverRunway(aircraft, usage) < TrafficCommitMeters ? null : FindAircraftOnRunway(usage.Runway, aircraft, usage);
 
         // Inside the width but still turning: touching down at an angle runs it off sideways.
         Vector3 track = aircraft.rb.velocity;
@@ -1166,17 +1197,24 @@ internal sealed partial class CommanderAirCommandService
         }
 
         LandingSwitchMode.Invoke(state, new[] { Enum.Parse(LandingModeType, "Aborting_Landing") });
+        Vector3 along = runwayLine.normalized;
+        Vector3 touchdown = usage.GetTouchdownPoint().ToLocalPosition();
+        string blocker = onRunway == null
+            ? string.Empty
+            : $" {Vector3.Dot(onRunway.transform.position - aircraft.transform.position, along):0} m ahead at {onRunway.speed:0} m/s ({onRunway.pilots?[0]?.currentState?.GetType().Name})";
         CommanderPlugin.Log.LogInfo(
             $"{CommanderGameAccess.GetUnitLabel(aircraft)} going round at {aircraft.radarAlt:0} m: "
-                + (urgent ?? (onRunway != null ? $"{CommanderGameAccess.GetUnitLabel(onRunway)} is on the runway" : $"{offset.magnitude:0.0} m off the centreline (allowed {allowed:0.0}), track {trackOff:0} deg off, bank {bank:0} deg"))
-                + $", sinking {-aircraft.rb.velocity.y:0.0} m/s at {aircraft.speed:0} m/s (landing speed {LandingSpeedRef(state):0}). Go-around {flown + 1} of {MaxGoArounds}.");
+                + (urgent ?? (onRunway != null ? $"{CommanderGameAccess.GetUnitLabel(onRunway)} is on the runway{blocker}" : $"{offset.magnitude:0.0} m off the centreline (allowed {allowed:0.0}), track {trackOff:0} deg off, bank {bank:0} deg"))
+                + $", sinking {-aircraft.rb.velocity.y:0.0} m/s at {aircraft.speed:0} m/s (landing speed {LandingSpeedRef(state):0}), {HeightOverRunway(aircraft, usage):0} m over the runway"
+                + $" {Vector3.Dot(touchdown - aircraft.transform.position, along):0} m before touchdown, glideslope {usage.GetGlideslopeError(aircraft, 0f):+0;-0} m"
+                + $" at {LandingAirbaseRef(state)?.name}. Go-around {flown + 1} of {MaxGoArounds}.");
         return true;
     }
 
     /// <summary>
     /// Another aeroplane on the ground on this runway's pavement. The game lets a second lander onto
     /// final while the first is still rolling out. Given the asker's landing, a lander ahead of it in
-    /// trail by its stopping room does not count.
+    /// trail by its stopping room does not count, nor anything else standing or rolling away past it.
     /// </summary>
     private static Aircraft? FindAircraftOnRunway(Airbase.Runway runway, Aircraft asker, Airbase.Runway.RunwayUsage? landing = null)
     {
@@ -1184,11 +1222,14 @@ internal sealed partial class CommanderAirCommandService
         // distance, as the rollout reckons it. A fixed 1.5 km is longer than Dustbowl's whole strip,
         // and every Compass in trail went round at 30 m for the one rolling out ahead.
         float clear = 0f;
+        Vector3 along = Vector3.zero;
         if (landing != null)
         {
-            Vector3 along = runway.GetDirection(landing.Value.Reverse).normalized;
+            along = runway.GetDirection(landing.Value.Reverse).normalized;
             float toTouchdown = Mathf.Max(0f, Vector3.Dot(landing.Value.GetTouchdownPoint().ToLocalPosition() - asker.transform.position, along));
-            clear = toTouchdown + (asker.speed * asker.speed / (2f * RolloutAssistMax)) + RolloutBlockMarginMeters;
+
+            // The rollout brakes for traffic ahead with the wheel brakes and the full assist.
+            clear = toTouchdown + (asker.speed * asker.speed / (2f * (RolloutWheelBraking + RolloutAssistMax))) + RolloutBlockMarginMeters;
         }
 
         List<Aircraft> all = UnitRegistry.allAircraft;
@@ -1200,13 +1241,33 @@ internal sealed partial class CommanderAirCommandService
                 && !other.disabled
                 && other.radarAlt < 5f
                 && IsOnPavement(runway, other)
-                && (landing == null || !IsLandingAhead(asker, landing.Value, other, clear)))
+
+                // Anything past where the asker stops does not count, counting where one rolling away
+                // will at least have got to, unless it is coming this way: a lander still rolling out,
+                // or one parked or lined up far down the runway, sent every follower round at 30 m.
+                && (landing == null || !IsPastStop(asker, other, along, clear)))
             {
                 return other;
             }
         }
 
         return null;
+    }
+
+    private static bool IsPastStop(Aircraft asker, Aircraft other, Vector3 along, float clear)
+    {
+        bool coming = other.rb != null && Vector3.Dot(other.rb.velocity, along) < -1f;
+        return !coming && Vector3.Dot(other.transform.position - asker.transform.position, along) + RollingLead(other, along) > clear;
+    }
+
+    /// <summary>
+    /// How much further along <paramref name="along"/> (normalised) an aeroplane rolling that way
+    /// goes at the hardest a rollout brakes: it cannot stop any shorter than this.
+    /// </summary>
+    private static float RollingLead(Aircraft other, Vector3 along)
+    {
+        float speed = other.rb == null ? 0f : Mathf.Max(Vector3.Dot(other.rb.velocity, along), 0f);
+        return speed * speed / (2f * (RolloutWheelBraking + RolloutAssistMax));
     }
 
     private static bool HasLanderAhead(List<Aircraft> landers, Aircraft asker, Airbase.Runway.RunwayUsage usage)
@@ -1290,11 +1351,11 @@ internal sealed partial class CommanderAirCommandService
     {
         return CommanderForwardBase.IsForwardBase(field)
             ? IsStripInUse(runway, asker)
-            : IsTaxiingAt(field, asker, inbound: false)
+            : IsTaxiingAt(field, asker, inbound: false, nearRunway: runway)
 
                 // Only a lander still rolling in: one stopped in the queue behind the stand held
-                // every aeroplane in the air for minutes over a clear runway.
-                || IsTaxiingAt(field, asker, inbound: true, minSpeed: 1f);
+                // every aeroplane in the air for minutes over a clear runway. Only near the runway too.
+                || IsTaxiingAt(field, asker, inbound: true, minSpeed: 1f, nearRunway: runway);
     }
 
     /// <summary>

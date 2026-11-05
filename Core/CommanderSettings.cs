@@ -97,8 +97,14 @@ internal static class CommanderSettings
     // green haze where nothing stands out; contrast is what separates a vehicle from the ground.
     internal static float NightVisionContrast { get => Get("Visuals", "NightVisionContrast", 30f); set => Set("Visuals", "NightVisionContrast", value); }
 
-    // Drains the green tint to grey, like white-phosphor tubes. Easier on the eyes for long sessions.
-    internal static bool NightVisionWhitePhosphor { get => Get("Visuals", "NightVisionWhitePhosphor", false); set => Set("Visuals", "NightVisionWhitePhosphor", value); }
+    // 0 green phosphor (the game's), 1 white phosphor, 2 full colour. Full colour plus the fill below
+    // reads like an overcast day. A new key, so the old white-phosphor bool doesn't carry over.
+    internal static int NightVisionTint { get => Get("Visuals", "NightVisionTint", 2); set => Set("Visuals", "NightVisionTint", value); }
+
+    // How bright unlit ground looks through the goggles, as a fraction of a shaded daytime surface.
+    // At night the scene has almost no ambient light, so exposure alone amplifies black; this puts
+    // a floor under the ambient and fog light. See CommanderNightVisionFillPatch.
+    internal static float NightVisionFill { get => Get("Visuals", "NightVisionFill", 0.5f); set => Set("Visuals", "NightVisionFill", value); }
 
     // Per-window zoom from the corner grips, "id=scale;id=scale". See CommanderWindowScale.
     // A new key since the UI went to native scale: zooms saved against the old 2/3 base were too big.
@@ -192,7 +198,7 @@ internal static class CommanderSettings
 
     internal static bool AlertWindow { get => Get("UI", "AlertWindow", true); set => Set("UI", "AlertWindow", value); }
 
-    // 0 AUTO (on for the mod's own missions only), 1 MATCHED, 2 MISSION FUNDS. OFF is never saved:
+    // 1 MATCHED, 2 MISSION FUNDS (0, the retired AUTO, plays as MATCHED). OFF is never saved:
     // it lasts one match (CommanderEnemyCommanderService.OffThisMatch), so the duel always opens
     // with an opponent.
     internal static int EnemyCommanderMode { get => CommanderMapSettings.OverrideInt(CommanderMapSettings.EnemyModePrefix) ?? Get("Gameplay", "EnemyCommanderMode", 0); set => Set("Gameplay", "EnemyCommanderMode", CommanderMapSettings.FollowInMatch(CommanderMapSettings.EnemyModePrefix, value)); }
@@ -218,7 +224,7 @@ internal static class CommanderSettings
 
     /// <summary>What a hostile commander's mine earns, as a multiple of the player's. The AI has no
     /// second income (it never flies a sortie for a kill reward the way a player does), so a flat
-    /// parity mine leaves it poorer than the player over a long match.</summary>
+    /// parity mine leaves it poorer than the player over a long match. CHALLENGING only.</summary>
     internal static float EnemyMineIncomeMultiplier { get => Get("Economy", "EnemyMineIncomeMultiplier", 1.5f); set => Set("Economy", "EnemyMineIncomeMultiplier", value); }
 
     // A factory's price is FactoryBuildCost scaled by its product's value against this reference, so
@@ -280,14 +286,17 @@ internal static class CommanderSettings
     // already in the config file, so a rename is the only way to change one.
     internal static float NavalDockCost { get => Get("Economy", "NavalDockPrice", 75f); set => Set("Economy", "NavalDockPrice", value); }
 
-    internal static float NavalDockUpgradeCost { get => Get("Economy", "NavalDockUpgradeCost", 450f); set => Set("Economy", "NavalDockUpgradeCost", value); }
-
     // A vehicle depot starts at level 1; level 2 sells all artillery and anything priced at
     // DepotLevel2MinValue or more (MBTs, the bigger SAMs), for both commanders.
     internal static float DepotUpgradeCost { get => Get("Economy", "DepotUpgradeCost", 300f); set => Set("Economy", "DepotUpgradeCost", value); }
 
     // Level 3: the ballistic launchers, the StratoLance, the fire-control truck and the SPAAG.
     internal static float DepotLevel3UpgradeCost { get => Get("Economy", "DepotLevel3UpgradeCost", 1000f); set => Set("Economy", "DepotLevel3UpgradeCost", value); }
+
+    // A naval dock has three levels too: level 2, then level 3.
+    internal static float NavalDockUpgradeCost { get => Get("Economy", "NavalDockUpgradeCost", 450f); set => Set("Economy", "NavalDockUpgradeCost", value); }
+
+    internal static float NavalDockLevel3UpgradeCost { get => Get("Economy", "NavalDockLevel3UpgradeCost", 900f); set => Set("Economy", "NavalDockLevel3UpgradeCost", value); }
 
     internal static float DepotLevel2MinValue { get => Get("Economy", "DepotLevel2MinValue", 10f); set => Set("Economy", "DepotLevel2MinValue", value); }
 
@@ -546,10 +555,11 @@ internal static class CommanderSettings
         _ = AreaFireDiameterMeters;
         _ = NavalDockShoreMeters;
         _ = NavalDockCost;
-        _ = NavalDockUpgradeCost;
         _ = DepotUpgradeCost;
         _ = DepotLevel2MinValue;
         _ = DepotLevel3UpgradeCost;
+        _ = NavalDockUpgradeCost;
+        _ = NavalDockLevel3UpgradeCost;
         _ = EnrichmentPlantCost;
         _ = MobileArtilleryCost;
         _ = AircraftCaptureStrength;

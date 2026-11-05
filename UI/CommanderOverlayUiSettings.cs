@@ -355,25 +355,19 @@ internal sealed partial class CommanderOverlayUi
         GUI.Box(new Rect(12f, rulesY, settingsWindowRect.width - 24f, 118f), string.Empty, CommanderUiTheme.Panel);
         GUI.Label(new Rect(24f, rulesY + 10f, settingsWindowRect.width - 48f, 22f), "MATCH RULES", CommanderUiTheme.Header);
 
-        // Cycles AUTO -> MATCHED -> MISSION FUNDS -> OFF (this match only). AUTO says what it
-        // resolved to, because "AUTO" alone does not tell a player whether they have an opponent.
-        int enemySetting = CommanderSettings.EnemyCommanderMode;
+        // Cycles MATCHED -> MISSION FUNDS -> OFF (this match only). Whether there is an AI at all
+        // is AI Commanders' call, so an off one says why.
         int enemyMode = CommanderEnemyCommanderService.EffectiveMode;
         bool enemyLocked = CommanderEnemyCommanderService.IsChampionsMission;
         string enemyLabel = enemyLocked
             ? $"{CommanderEnemyCommanderService.GetModeLabel(enemyMode)} (LOCKED BY MISSION)"
             : CommanderEnemyCommanderService.OffThisMatch
             ? "OFF (THIS MATCH ONLY)"
-            : enemySetting switch
-            {
-                CommanderEnemyCommanderService.ModeMatched or CommanderEnemyCommanderService.ModeMission
-                    => CommanderEnemyCommanderService.GetModeLabel(enemySetting),
-                _ => enemyMode == CommanderEnemyCommanderService.ModeOff
-                    ? CommanderEnemyCommanderService.IsMultiplayerMatch && CommanderEnemyCommanderService.IsDuelMission
-                        ? "AUTO (OFF IN MULTIPLAYER)"
-                        : "AUTO (OFF ON THIS MISSION)"
-                    : $"AUTO: {CommanderEnemyCommanderService.GetModeLabel(enemyMode)}",
-            };
+            : enemyMode != CommanderEnemyCommanderService.ModeOff
+            ? CommanderEnemyCommanderService.GetModeLabel(enemyMode)
+            : CommanderEnemyCommanderService.IsMultiplayerMatch && CommanderEnemyCommanderService.IsDuelMission
+            ? "OFF IN MULTIPLAYER"
+            : "OFF ON THIS MISSION";
         int teamsLeftToPlayers = enemyMode > 0 ? CommanderEnemyCommanderService.CountTeamsLeftToPlayers() : 0;
         string buttonLabel = $"ENEMY COMMANDER: {enemyLabel}"
             + (enemyMode > 0 ? $" ({CommanderEnemyCommanderService.Instance?.TotalPurchases ?? 0} bought)" : string.Empty)
@@ -539,7 +533,7 @@ internal sealed partial class CommanderOverlayUi
         CommanderSettings.BackgroundColor = DrawColourRow(rowY + 36f, "Background", CommanderSettings.BackgroundColor);
 
         float nightY = colourY + 48f + (rows * 36f) + 56f;
-        GUI.Box(new Rect(12f, nightY, width, 262f), string.Empty, CommanderUiTheme.Panel);
+        GUI.Box(new Rect(12f, nightY, width, 298f), string.Empty, CommanderUiTheme.Panel);
         GUI.Label(new Rect(24f, nightY + 10f, width - 24f, 22f), "NIGHT VISION", CommanderUiTheme.Header);
         CommanderSettings.EnhanceNightVision = CommanderUiTheme.Check(
             new Rect(24f, nightY + 40f, width - 48f, 30f),
@@ -552,18 +546,22 @@ internal sealed partial class CommanderOverlayUi
             nightY + 112f, "Glare cutoff", CommanderSettings.NightVisionGlareCutoff, 0.5f, 4f, "0.0#", "x");
         CommanderSettings.NightVisionContrast = DrawCameraSlider(
             nightY + 148f, "Contrast", CommanderSettings.NightVisionContrast, 0f, 80f, "0", string.Empty);
-        CommanderSettings.NightVisionWhitePhosphor = CommanderUiTheme.Check(
-            new Rect(24f, nightY + 184f, width - 48f, 30f),
-            CommanderSettings.NightVisionWhitePhosphor,
-            "White phosphor (grey instead of green)",
-            CommanderUiTheme.Toggle);
-        if (GUI.Button(new Rect(24f, nightY + 222f, width - 24f, 30f), "RESET NIGHT VISION", CommanderUiTheme.Button))
+        CommanderSettings.NightVisionFill = DrawCameraSlider(
+            nightY + 184f, "Fill light", CommanderSettings.NightVisionFill, 0f, 1.5f, "0.00", string.Empty);
+        string tintName = CommanderSettings.NightVisionTint switch { 1 => "White phosphor", 2 => "Full colour", _ => "Green phosphor" };
+        if (GUI.Button(new Rect(24f, nightY + 220f, width - 24f, 30f), "Tint: " + tintName, CommanderUiTheme.Button))
+        {
+            CommanderSettings.NightVisionTint = (CommanderSettings.NightVisionTint + 1) % 3;
+        }
+
+        if (GUI.Button(new Rect(24f, nightY + 258f, width - 24f, 30f), "RESET NIGHT VISION", CommanderUiTheme.Button))
         {
             CommanderSettings.EnhanceNightVision = true;
             CommanderSettings.NightVisionGain = 2.5f;
             CommanderSettings.NightVisionGlareCutoff = 1.8f;
             CommanderSettings.NightVisionContrast = 30f;
-            CommanderSettings.NightVisionWhitePhosphor = false;
+            CommanderSettings.NightVisionFill = 0.5f;
+            CommanderSettings.NightVisionTint = 2;
         }
 
         if (GUI.Button(new Rect(24f, rowY + (rows * 36f) + 4f, width - 24f, 30f), "RESET COLOURS", CommanderUiTheme.Button))

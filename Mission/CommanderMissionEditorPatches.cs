@@ -296,7 +296,7 @@ internal static class CommanderMissionEditorPatches
 
         // Customize Mission's GC RTS Settings page, in its order, at the mod's defaults.
         Row("AI Commanders", CommanderMapSettings.AiCommandersPrefix, string.Empty, CommanderEnemyCommanderService.AiCommandersBoth + 1, i => i, CommanderMissionSettingsPatches.AiCommandersLabel, CommanderEnemyCommanderService.AiCommandersEnemy);
-        Row("Enemy Commander", CommanderMapSettings.EnemyModePrefix, string.Empty, CommanderEnemyCommanderService.ModeMission + 1, i => i, CommanderMissionSettingsPatches.EnemyModeLabel, CommanderEnemyCommanderService.ModeOff);
+        Row("Enemy Commander", CommanderMapSettings.EnemyModePrefix, string.Empty, 2, i => i + CommanderEnemyCommanderService.ModeMatched, i => CommanderMissionSettingsPatches.EnemyModeLabel(i + CommanderEnemyCommanderService.ModeMatched), 0);
         Row("Enemy Difficulty", CommanderMapSettings.EnemyDifficultyPrefix, string.Empty, CommanderEnemyCommanderService.DifficultyChallenging + 1, i => i, CommanderEnemyCommanderService.GetDifficultyLabel, CommanderEnemyCommanderService.DifficultyNormal);
         Row("Enemy AI also runs teams with players", CommanderMapSettings.HumanTeamsPrefix, string.Empty, 2, i => i, OffOn, 0);
         Row(CommanderMissionSettingsPatches.FactionVehiclesOnlyLabel, CommanderMapSettings.FactoryVehiclesPrefix, string.Empty, 2, i => i, OffOn, 0);

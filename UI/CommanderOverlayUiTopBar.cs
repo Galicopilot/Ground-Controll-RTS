@@ -31,15 +31,11 @@ internal sealed partial class CommanderOverlayUi
     private string topBarReserve = string.Empty;
     private float nextTopBarReserveAt;
 
-    /// <summary>A client's clock is the server's, and the game does not network it.</summary>
-    private static bool CanSetSpeed
-    {
-        get
-        {
-            FactionHQ? hq = CommanderGameAccess.GetLocalHq();
-            return hq == null || hq.IsServer;
-        }
-    }
+    /// <summary>
+    /// The game does not network its clock, so speed is single-player only: never a guest's, and
+    /// not the host's once anyone has joined (see <see cref="CommanderNetwork.HostHasGuests"/>).
+    /// </summary>
+    private static bool CanSetSpeed => !CommanderNetwork.IsGuest && !CommanderNetwork.HostHasGuests;
 
     /// <summary>The placement or map instruction under the bar, empty when nothing is armed.</summary>
     private string PlacementHint => economyService.AwaitingPlacement
@@ -92,7 +88,7 @@ internal sealed partial class CommanderOverlayUi
             float scale = TimeScaleSteps[i];
             if (GUI.Button(
                 new Rect(x, y, TopBarSpeedWidth, height),
-                new GUIContent($"{scale:0}x", host ? "Game speed." : "Game speed: the host sets it."),
+                new GUIContent($"{scale:0}x", host ? "Game speed." : "Game speed: 1x in multiplayer."),
                 Mathf.Approximately(live, scale) ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button))
             {
                 TimeScaleManager.Scale = scale;

@@ -830,6 +830,11 @@ internal sealed partial class CommanderAirCommandService : ICommanderActivate, I
         SetStatus($"{CommanderGameAccess.GetUnitLabel(aircraft)} ordered to RTB.");
     }
 
+    internal AirCommandMode? GetMissionMode(Aircraft aircraft)
+    {
+        return missions.TryGetValue(aircraft, out AirMission mission) ? mission.Mode : null;
+    }
+
     internal float GetMissionRadiusKm(Aircraft aircraft)
     {
         return missions.TryGetValue(aircraft, out AirMission mission)

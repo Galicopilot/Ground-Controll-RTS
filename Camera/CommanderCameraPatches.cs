@@ -76,8 +76,10 @@ internal static class CommanderCameraPatches
         private static ColorAdjustments? captured;
         private static bool contrastOverride;
         private static bool saturationOverride;
+        private static bool colorFilterOverride;
         private static float contrastValue;
         private static float saturationValue;
+        private static Color colorFilterValue;
 
         internal static bool Prefix(
             ColorAdjustments ___colorAdjustments,
@@ -100,25 +102,38 @@ internal static class CommanderCameraPatches
                 contrastValue = ___colorAdjustments.contrast.value;
                 saturationOverride = ___colorAdjustments.saturation.overrideState;
                 saturationValue = ___colorAdjustments.saturation.value;
+                colorFilterOverride = ___colorAdjustments.colorFilter.overrideState;
+                colorFilterValue = ___colorAdjustments.colorFilter.value;
             }
 
             if (!CommanderSettings.EnhanceNightVision || level == null || ___bloom == null)
             {
                 RestoreProfile(___colorAdjustments);
+                CommanderNightVisionFillPatch.Clear();
                 return true;
             }
 
             float ambient = level.GetAmbientLight();
-            ___colorAdjustments.postExposure.value = CommanderCameraTuning.NightVisionExposure(
+            float exposure = CommanderCameraTuning.NightVisionExposure(
                 ___gainMin, ___gainMax, ambient, CommanderSettings.NightVisionGain);
+            ___colorAdjustments.postExposure.value = exposure;
+            CommanderNightVisionFillPatch.SetFloor(level, CommanderCameraTuning.NightVisionFillFloor(
+                CommanderSettings.NightVisionFill, exposure, ambient));
+
             ___bloom.threshold.value = CommanderCameraTuning.NightVisionBloomThreshold(
                 ___bloomThresholdMin, ___bloomThresholdMax, ambient, CommanderSettings.NightVisionGlareCutoff);
 
             ___colorAdjustments.contrast.overrideState = true;
             ___colorAdjustments.contrast.value = CommanderCameraTuning.NightVisionContrast(
                 contrastOverride ? contrastValue : 0f, ambient, CommanderSettings.NightVisionContrast);
-            ___colorAdjustments.saturation.overrideState = CommanderSettings.NightVisionWhitePhosphor || saturationOverride;
-            ___colorAdjustments.saturation.value = CommanderSettings.NightVisionWhitePhosphor ? -100f : saturationValue;
+
+            // 0 green: the profile's own tint. 1 white: drained to grey. 2 full colour: the green
+            // filter swapped for white and a little saturation back, like NVG-Config's FullColor.
+            int tint = CommanderSettings.NightVisionTint;
+            ___colorAdjustments.saturation.overrideState = tint != 0 || saturationOverride;
+            ___colorAdjustments.saturation.value = tint switch { 1 => -100f, 2 => 20f, _ => saturationValue };
+            ___colorAdjustments.colorFilter.overrideState = tint == 2 || colorFilterOverride;
+            ___colorAdjustments.colorFilter.value = tint == 2 ? Color.white : colorFilterValue;
             return false;
         }
 
@@ -128,6 +143,74 @@ internal static class CommanderCameraPatches
             adjustments.contrast.value = contrastValue;
             adjustments.saturation.overrideState = saturationOverride;
             adjustments.saturation.value = saturationValue;
+            adjustments.colorFilter.overrideState = colorFilterOverride;
+            adjustments.colorFilter.value = colorFilterValue;
+        }
+    }
+
+    /// <summary>
+    /// At night <c>LevelInfo.UpdateTimeOfDayLighting</c> sets the ambient and fog colours near
+    /// black, so the goggles' exposure has nothing to amplify: unlit ground stays black and the
+    /// fog fades everything distant into it. While the goggles are on this puts a grey floor under
+    /// those colours (see <see cref="CommanderCameraTuning.NightVisionFillFloor"/>), which lights
+    /// the whole scene evenly like an overcast day. It is a per-channel max, so running on the
+    /// method's throttled early returns cannot compound, and the game's next real update (within
+    /// a second) puts its own values back once the goggles come off.
+    /// </summary>
+    [HarmonyPatch(typeof(LevelInfo), "UpdateTimeOfDayLighting")]
+    internal static class CommanderNightVisionFillPatch
+    {
+        private static readonly AccessTools.FieldRef<NightVision, bool> Active =
+            AccessTools.FieldRefAccess<NightVision, bool>("nightVisActive");
+
+        private static readonly System.Action<LevelInfo, bool> Refresh =
+            AccessTools.MethodDelegate<System.Action<LevelInfo, bool>>(
+                AccessTools.Method(typeof(LevelInfo), "UpdateTimeOfDayLighting"));
+
+        private static float floor;
+
+        /// <summary>Called every frame the goggles are on; relights at once when they go on.</summary>
+        internal static void SetFloor(LevelInfo level, float value)
+        {
+            bool wasOff = floor <= 0f;
+            floor = value;
+            if (wasOff && value > 0f)
+            {
+                Refresh(level, true);
+            }
+        }
+
+        internal static void Clear()
+        {
+            floor = 0f;
+        }
+
+        internal static void Postfix()
+        {
+            if (NightVision.i == null || !Active(NightVision.i))
+            {
+                floor = 0f;
+                return;
+            }
+
+            if (floor <= 0f)
+            {
+                return;
+            }
+
+            RenderSettings.ambientSkyColor = Lift(RenderSettings.ambientSkyColor, floor);
+            RenderSettings.ambientEquatorColor = Lift(RenderSettings.ambientEquatorColor, floor);
+            RenderSettings.ambientGroundColor = Lift(RenderSettings.ambientGroundColor, floor * 0.6f);
+            RenderSettings.fogColor = Lift(RenderSettings.fogColor, floor * 1.2f);
+        }
+
+        private static Color Lift(Color colour, float min)
+        {
+            return new Color(
+                Mathf.Max(colour.r, min),
+                Mathf.Max(colour.g, min),
+                Mathf.Max(colour.b, min),
+                colour.a);
         }
     }
 

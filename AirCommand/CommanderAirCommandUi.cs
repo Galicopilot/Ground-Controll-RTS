@@ -31,6 +31,7 @@ internal sealed partial class CommanderAirCommandUi
     private const float MinAircraftListWidth = 240f;
 
     private static readonly Vector2 MinSize = new(560f, 420f);
+    private static readonly Vector2 MinMissionSize = new(300f, 160f);
 
     private readonly CommanderAirCommandService service;
     private readonly List<Aircraft> missionAircraft = new();
@@ -209,20 +210,24 @@ internal sealed partial class CommanderAirCommandUi
             windowRect = CommanderWindowScale.Clamp(WindowId, windowRect);
         }
 
+        // Edges and grip like AIR COMMAND: width and height drag on their own, the list fills what is left.
+        Vector2 missionSize = CommanderWindowScale.Size(
+            MissionWindowId,
+            new Vector2(326f, Mathf.Min(missionContentHeight, (CommanderUiScale.Height - 64f) / CommanderWindowScale.Get(MissionWindowId))),
+            MinMissionSize);
         if (!missionPositionInitialized)
         {
             // Beside the AIR COMMAND window rather than against the right edge, which the tactical map uses.
             missionWindowRect = new Rect(
-                Mathf.Min(windowRect.xMax + 8f, Mathf.Max(12f, CommanderUiScale.Width - 342f)),
+                Mathf.Min(windowRect.xMax + 8f, Mathf.Max(12f, CommanderUiScale.Width - missionSize.x - 16f)),
                 52f,
-                326f,
-                Mathf.Min(520f, CommanderUiScale.Height - 32f));
+                missionSize.x,
+                missionSize.y);
             missionPositionInitialized = true;
         }
         else
         {
-            missionWindowRect.width = 326f;
-            missionWindowRect.height = Mathf.Min(missionContentHeight, CommanderUiScale.Height - 64f);
+            missionWindowRect.size = missionSize;
             missionWindowRect = CommanderWindowScale.Clamp(MissionWindowId, missionWindowRect);
         }
 

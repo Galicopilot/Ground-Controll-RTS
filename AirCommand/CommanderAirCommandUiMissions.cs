@@ -72,7 +72,7 @@ internal sealed partial class CommanderAirCommandUi
 
         // The window is as tall as its list, and says so when there is nothing in it.
         int listed = showIdleAircraft ? idleAircraft.Count : missionAircraft.Count;
-        missionContentHeight = y + (Mathf.Max(1, listed) * 58f) + 16f + (showIdleAircraft ? 0f : 126f);
+        missionContentHeight = y + (Mathf.Max(1, listed) * 58f) + 16f + (showIdleAircraft ? 0f : MissionFooterHeight());
         if (listed == 0)
         {
             GUI.Label(
@@ -102,7 +102,7 @@ internal sealed partial class CommanderAirCommandUi
             }
         }
 
-        float footerHeight = selectedAircraft != null ? 126f : 0f;
+        float footerHeight = selectedAircraft != null ? MissionFooterHeight() : 0f;
         Rect view = new(10f, y, missionWindowRect.width - 20f, missionWindowRect.height - y - 12f - footerHeight);
         Rect inner = new(0f, 0f, view.width - 18f, Mathf.Max(view.height, (missionAircraft.Count * 58f) + 4f));
         missionScroll = GUI.BeginScrollView(view, missionScroll, inner);
@@ -152,49 +152,97 @@ internal sealed partial class CommanderAirCommandUi
 
         if (selectedAircraft != null)
         {
-            float footerY = view.yMax + 6f;
-            GUI.Box(new Rect(10f, footerY, missionWindowRect.width - 20f, 116f), string.Empty, CommanderUiTheme.Panel);
-            GUI.Label(new Rect(20f, footerY + 7f, 104f, 24f), "AREA RADIUS", CommanderUiTheme.MutedLabel);
-            GUI.enabled = oldEnabled && !service.AwaitingAreaSelection;
-            float radiusKm = service.GetMissionRadiusKm(selectedAircraft);
-            float radiusDelta = RadiusSlider(new Rect(126f, footerY + 14f, 100f, 12f), radiusKm);
-            if (radiusDelta != 0f)
-            {
-                service.StepMissionRadius(selectedAircraft, radiusDelta);
-            }
-
-            CommanderUiTheme.FitLabel(new Rect(232f, footerY + 8f, 74f, 24f), $"{radiusKm:0} km", CommanderUiTheme.Header);
-
-            // Altitude is changed on a package that is already up, not only at launch: "the AI
-            // flies too low" is something a player notices while watching it, not while buying it.
-            GUI.Label(new Rect(20f, footerY + 41f, 104f, 24f), "ALTITUDE", CommanderUiTheme.MutedLabel);
-            float missionAltitude = service.GetMissionAltitude(selectedAircraft);
-            float altitudeDelta = AltitudeSlider(new Rect(126f, footerY + 48f, 100f, 12f), missionAltitude);
-            if (altitudeDelta != 0f)
-            {
-                service.StepMissionAltitude(selectedAircraft, altitudeDelta);
-            }
-
-            // 74 px is narrower than STANDARD at the header size, which is how the D ended up on a
-            // second line with both lines cut in half.
-            CommanderUiTheme.FitLabel(
-                new Rect(232f, footerY + 42f, 74f, 24f),
-                CommanderAirCommandService.FormatTargetAltitude(missionAltitude),
-                CommanderUiTheme.Header);
-
-            if (GUI.Button(
-                new Rect(20f, footerY + 77f, missionWindowRect.width - 40f, 32f),
-                "MOVE AREA CENTER",
-                CommanderUiTheme.PrimaryButton))
-            {
-                service.BeginMissionAreaEdit(selectedAircraft);
-            }
-
-            GUI.enabled = oldEnabled;
+            DrawMissionFooter(selectedAircraft, view.yMax + 6f);
         }
 
         CommanderUiTheme.DrawTooltip(new Rect(0f, 0f, missionWindowRect.width, missionWindowRect.height));
         GUI.DragWindow(new Rect(0f, 0f, missionWindowRect.width, 28f));
+    }
+
+    /// <summary>The CHANGE MISSION grid wraps to as many columns as the window is wide.</summary>
+    private int MissionModeColumns()
+    {
+        return Mathf.Clamp(Mathf.FloorToInt((missionWindowRect.width - 40f) / 100f), 2, TaskModes.Length);
+    }
+
+    private float MissionFooterHeight()
+    {
+        int rows = (TaskModes.Length + MissionModeColumns() - 1) / MissionModeColumns();
+        return 150f + (rows * 30f);
+    }
+
+    /// <summary>
+    /// The selected package's settings: what it is flying, how wide and how high. Every row is
+    /// laid out off the window's width, so dragging the window wider gives the sliders the room.
+    /// </summary>
+    private void DrawMissionFooter(Aircraft aircraft, float footerY)
+    {
+        float width = missionWindowRect.width;
+        GUI.Box(new Rect(10f, footerY, width - 20f, MissionFooterHeight() - 10f), string.Empty, CommanderUiTheme.Panel);
+        bool oldEnabled = GUI.enabled;
+        GUI.enabled = oldEnabled && !service.AwaitingAreaSelection;
+
+        float y = footerY + 6f;
+        GUI.Label(new Rect(20f, y, width - 40f, 22f), "CHANGE MISSION", CommanderUiTheme.MutedLabel);
+        y += 24f;
+
+        // Keeps the area it already has; AUTOPILOT and STANDBY behave as TASK gives them.
+        CommanderAirCommandService.AirCommandMode? current = service.GetMissionMode(aircraft);
+        int columns = MissionModeColumns();
+        float cellWidth = (width - 40f - ((columns - 1) * 4f)) / columns;
+        for (int i = 0; i < TaskModes.Length; i++)
+        {
+            CommanderAirCommandService.AirCommandMode mode = TaskModes[i];
+            Rect cell = new(20f + ((i % columns) * (cellWidth + 4f)), y + ((i / columns) * 30f), cellWidth, 26f);
+            if (GUI.Button(
+                cell,
+                CommanderAirCommandService.GetModeShortLabel(mode),
+                mode == current ? CommanderUiTheme.SelectedButton : CommanderUiTheme.Button)
+                && mode != current)
+            {
+                service.ChangeMissionMode(aircraft, mode);
+            }
+        }
+
+        y += ((TaskModes.Length + columns - 1) / columns * 30f) + 6f;
+
+        float sliderWidth = Mathf.Max(60f, width - 126f - 100f);
+        float valueX = 126f + sliderWidth + 6f;
+        GUI.Label(new Rect(20f, y, 104f, 24f), "AREA RADIUS", CommanderUiTheme.MutedLabel);
+        float radiusKm = service.GetMissionRadiusKm(aircraft);
+        float radiusDelta = RadiusSlider(new Rect(126f, y + 7f, sliderWidth, 12f), radiusKm);
+        if (radiusDelta != 0f)
+        {
+            service.StepMissionRadius(aircraft, radiusDelta);
+        }
+
+        CommanderUiTheme.FitLabel(new Rect(valueX, y + 1f, 74f, 24f), $"{radiusKm:0} km", CommanderUiTheme.Header);
+        y += 34f;
+
+        // Altitude is changed on a package that is already up, not only at launch: "the AI
+        // flies too low" is something a player notices while watching it, not while buying it.
+        GUI.Label(new Rect(20f, y, 104f, 24f), "ALTITUDE", CommanderUiTheme.MutedLabel);
+        float missionAltitude = service.GetMissionAltitude(aircraft);
+        float altitudeDelta = AltitudeSlider(new Rect(126f, y + 7f, sliderWidth, 12f), missionAltitude);
+        if (altitudeDelta != 0f)
+        {
+            service.StepMissionAltitude(aircraft, altitudeDelta);
+        }
+
+        // 74 px is narrower than STANDARD at the header size, which is how the D ended up on a
+        // second line with both lines cut in half.
+        CommanderUiTheme.FitLabel(
+            new Rect(valueX, y + 1f, 74f, 24f),
+            CommanderAirCommandService.FormatTargetAltitude(missionAltitude),
+            CommanderUiTheme.Header);
+        y += 36f;
+
+        if (GUI.Button(new Rect(20f, y, width - 40f, 32f), "MOVE AREA CENTER", CommanderUiTheme.PrimaryButton))
+        {
+            service.BeginMissionAreaEdit(aircraft);
+        }
+
+        GUI.enabled = oldEnabled;
     }
 
     /// <summary>

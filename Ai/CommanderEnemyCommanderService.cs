@@ -23,7 +23,7 @@ namespace GroundControlRts;
 /// </remarks>
 internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPersistent, ICommanderResetSession
 {
-    // Effective modes. ModeOff is also the AUTO setting value, see EffectiveMode.
+    // Effective modes. A saved 0 is the retired AUTO and plays as MATCHED, see EffectiveMode.
     internal const int ModeOff = 0;
     internal const int ModeMatched = 1;
     internal const int ModeMission = 2;
@@ -249,7 +249,7 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
     /// <summary>
     /// OFF, for this match only. Deliberately not saved: a saved OFF would silently leave every
     /// later duel without an opponent, and the duel is meant to have one out of the box. Cleared on
-    /// scene change, so the next match starts on the saved setting (AUTO unless changed).
+    /// scene change, so the next match starts on the saved setting (MATCHED unless changed).
     /// </summary>
     internal static bool OffThisMatch { get; private set; }
 
@@ -319,9 +319,9 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
     internal static bool IsMultiplayerMatch => GameManager.gameState == GameState.Multiplayer;
 
     /// <summary>
-    /// The mode actually in force. AUTO (setting 0) is MATCHED on the mod's own missions in
-    /// singleplayer and off everywhere else, including every multiplayer match, where the other side
-    /// is a person. It stays off for the whole match, even while that person is disconnected.
+    /// The mode actually in force. On wherever AI Commanders puts one: the mod's own missions in
+    /// singleplayer, or every mission and multiplayer too past the listed ones; else off, since the
+    /// other side is a person. It stays off for the whole match, even while that person is disconnected.
     /// Champions is the exception: its enemy side is <c>preventJoin</c> and is always locked to
     /// MISSION FUNDS, singleplayer or hosted, since the authored balance is the difficulty.
     /// <see cref="OffThisMatch"/> overrides it until the next scene change.
@@ -342,15 +342,11 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
                 return ModeOff;
             }
 
-            return OffThisMatch ? ModeOff : CommanderSettings.EnemyCommanderMode switch
-            {
-                ModeMatched => ModeMatched,
-                ModeMission => ModeMission,
-
-                // AI COMMANDERS past the listed missions is the host asking for an opponent, so
-                // AUTO answers it in multiplayer too; a team a player has joined is still theirs.
-                _ => IsDuelMission && (!IsMultiplayerMatch || CommandersEverywhere || IsTeamDuelPveMission) ? ModeMatched : ModeOff,
-            };
+            // AI Commanders decides whether there is one; AI COMMANDERS past the listed missions is
+            // the host asking for an opponent, so it answers in multiplayer too. The mode setting
+            // only picks its funding (the retired AUTO, 0, plays as MATCHED).
+            bool present = !OffThisMatch && IsDuelMission && (!IsMultiplayerMatch || CommandersEverywhere || IsTeamDuelPveMission);
+            return !present ? ModeOff : CommanderSettings.EnemyCommanderMode == ModeMission ? ModeMission : ModeMatched;
         }
     }
 
@@ -413,7 +409,7 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
         defenceQueue.Clear();
     }
 
-    /// <summary>The settings button: AUTO -> MATCHED -> MISSION FUNDS -> OFF (this match) -> AUTO.</summary>
+    /// <summary>The settings button: MATCHED -> MISSION FUNDS -> OFF (this match) -> MATCHED.</summary>
     internal static void CycleSetting()
     {
         if (IsChampionsMission)
@@ -430,13 +426,13 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
         int setting = CommanderSettings.EnemyCommanderMode;
         if (setting == ModeMission)
         {
-            // What gets saved is AUTO, so the next match is back to normal.
-            CommanderSettings.EnemyCommanderMode = ModeOff;
+            // What gets saved is MATCHED, so the next match is back to normal.
+            CommanderSettings.EnemyCommanderMode = ModeMatched;
             OffThisMatch = true;
             return;
         }
 
-        CommanderSettings.EnemyCommanderMode = setting == ModeMatched ? ModeMission : ModeMatched;
+        CommanderSettings.EnemyCommanderMode = ModeMission;
     }
 
     /// <summary>
@@ -692,7 +688,9 @@ internal sealed partial class CommanderEnemyCommanderService : ICommanderTickPer
         // Applied in every mode, MISSION FUNDS included: the authored balance is the base the head
         // start multiplies, single player or multiplayer alike.
         // A GC RTS map may set its own multiple in the editor.
-        float headStart = CommanderMapSettings.AiHeadStart ?? (IsChampionsMission ? ChampionsHeadStart : DuelHeadStart);
+        // NORMAL takes no head start; CHALLENGING keeps it.
+        float headStart = CommanderMapSettings.AiHeadStart
+            ?? (IsChampionsMission ? ChampionsHeadStart : IsChallenging(hq) ? DuelHeadStart : 1f);
         hq.SetFunds(hq.factionFunds * headStart);
 
         hq.AIAircraftLimit = 0;

@@ -427,6 +427,13 @@ internal sealed partial class CommanderAirCommandService
         // by clicking the building, so the list is that one row.
         if (HangarFilter != null && ResolveHangarField(HangarFilter) is Airbase field)
         {
+            // A busy hangar has no departure to offer; the 0.5 s refresh lists it again once clear.
+            if (!HangarFilter.Available)
+            {
+                SelectedAirbaseIndex = 0;
+                return;
+            }
+
             Transform fieldPosition = field.center != null ? field.center : field.transform;
             airbases.Add(new AirbaseOption(
                 field,
@@ -437,12 +444,12 @@ internal sealed partial class CommanderAirCommandService
             return;
         }
 
-        // A field whose doors are all shut stays listed as BUSY. Hangar.Available is false until the
-        // last spawn is 30+ m clear, which on a carrier with aircraft parked by the doors can be the
-        // rest of the match, and dropping the row made a Hyperion beside a Cursor simply vanish.
+        // Only fields that can launch right now are listed: one whose doors are all shut drops out
+        // and comes back on the 0.5 s refresh once clear, so spamming LAUNCH walks from base to base
+        // and with nothing free the list is simply empty.
         foreach (Airbase airbase in hq.GetAirbases())
         {
-            if (!IsCompatibleAirbase(airbase, hq, option.Definition))
+            if (!IsCompatibleAirbase(airbase, hq, option.Definition) || !airbase.CanSpawnAircraft(option.Definition))
             {
                 continue;
             }
@@ -452,21 +459,14 @@ internal sealed partial class CommanderAirCommandService
                 airbase,
                 GetAirbaseName(airbase),
                 Vector3.Distance(cameraPosition, position.position),
-                ready: airbase.CanSpawnAircraft(option.Definition)));
+                ready: true));
         }
 
-        airbases.Sort(static (left, right) => left.Ready != right.Ready
-            ? right.Ready.CompareTo(left.Ready)
-            : left.Distance.CompareTo(right.Distance));
+        airbases.Sort(static (left, right) => left.Distance.CompareTo(right.Distance));
         int preservedIndex = previouslySelected == null
             ? -1
             : airbases.FindIndex(option => ReferenceEquals(option.Airbase, previouslySelected));
-
-        // A pick survives only while it can launch: ready rows sort first, so a field that goes busy
-        // hands over to the nearest free one and spamming LAUNCH walks down the list.
-        SelectedAirbaseIndex = preservedIndex >= 0 && (airbases[preservedIndex].Ready || !airbases[0].Ready)
-            ? preservedIndex
-            : 0;
+        SelectedAirbaseIndex = Mathf.Max(preservedIndex, 0);
     }
 
     private void TryHandleTacticalMapClick()

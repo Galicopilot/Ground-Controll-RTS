@@ -7,6 +7,10 @@ namespace GroundControlRts;
 
 internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeactivate, ICommanderTickActive, ICommanderResetSession
 {
+    /// <summary>Radar SAMs told to let artillery rounds (shells, MLRS rockets) through. Read by
+    /// <see cref="CommanderIgnoreArtilleryPatches"/> on the host, where the targeting runs.</summary>
+    internal static readonly HashSet<Unit> IgnoreArtilleryUnits = new();
+
     private const float ControlRangeMeters = 300f;
     private const float RefreshIntervalSeconds = 1f;
 
@@ -17,6 +21,9 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
     private static readonly FieldInfo? FireControlTurretsField = AccessTools.Field(typeof(FireControl), "turrets");
     private static readonly FieldInfo? TurretModeField = AccessTools.Field(typeof(Turret), "targetAcquisitionMode");
     private static readonly MethodInfo? AircraftRpcToggleRadarMethod = AccessTools.Method(typeof(Aircraft), "RpcToggleRadar");
+
+    /// <summary>Artillery-round answer per missile type, so the targeting hot path asks the prefab once.</summary>
+    private static readonly Dictionary<UnitDefinition, bool> ArtilleryRounds = new();
 
     private readonly CommanderSelectionService selectionService;
     private readonly HashSet<Unit> offlineRadarUnits = new();
@@ -40,6 +47,7 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
         this.selectionService = selectionService;
         Instance = this;
         CommanderNetwork.OnHost("radar", HostRadar);
+        CommanderNetwork.OnHost("ignoreart", HostIgnoreArtillery);
     }
 
     internal static CommanderRadarService? Instance { get; private set; }
@@ -68,6 +76,7 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
         nearbyRadarUnits.Clear();
         nearbyLauncherUnits.Clear();
         launcherWarnings.Clear();
+        IgnoreArtilleryUnits.Clear();
     }
 
     public void TickActive()
@@ -159,6 +168,29 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
             && HasRadarSeekingTurret(definition.unitPrefab.GetComponentsInChildren<Turret>(true));
     }
 
+    internal static bool IsRadarSam(Unit? unit)
+    {
+        return unit != null && unit.definition is VehicleDefinition { vehicleType: VehicleType.R_SAM };
+    }
+
+    /// <summary>An unguided round that only knows a map point: the shell seeker the 155 mm and the
+    /// MLRS rockets fly on. Ballistic missiles (Piledrivers) home, so they are still shot at.</summary>
+    internal static bool IsArtilleryRound(Unit? unit)
+    {
+        if (unit is not Missile missile || missile.definition == null)
+        {
+            return false;
+        }
+
+        if (!ArtilleryRounds.TryGetValue(missile.definition, out bool artillery))
+        {
+            artillery = missile.GetComponentInChildren<InertialSeekerShell>(true) != null;
+            ArtilleryRounds[missile.definition] = artillery;
+        }
+
+        return artillery;
+    }
+
     internal bool TryGetFocusedState(out RadarState state)
     {
         state = focusedState!;
@@ -207,6 +239,42 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
             if (radarsByUnit.ContainsKey(units[i]))
             {
                 SetUnitRadar(units[i], !anyOnline);
+            }
+        }
+    }
+
+    /// <summary>Whether any selected radar SAM exists, and whether any of them ignores artillery.</summary>
+    internal bool TryGetSelectionIgnoreArtillery(out bool anyOn)
+    {
+        anyOn = false;
+        bool any = false;
+        IReadOnlyList<Unit> units = selectionService.SelectedUnits;
+        for (int i = 0; i < units.Count; i++)
+        {
+            if (IsRadarSam(units[i]))
+            {
+                any = true;
+                anyOn |= IgnoreArtilleryUnits.Contains(units[i]);
+            }
+        }
+
+        return any;
+    }
+
+    /// <summary>Turns IGNORE ARTILLERY off for every selected radar SAM when any has it, otherwise on.</summary>
+    internal void ToggleSelectionIgnoreArtillery()
+    {
+        if (!TryGetSelectionIgnoreArtillery(out bool anyOn))
+        {
+            return;
+        }
+
+        IReadOnlyList<Unit> units = selectionService.SelectedUnits;
+        for (int i = 0; i < units.Count; i++)
+        {
+            if (IsRadarSam(units[i]))
+            {
+                SetIgnoreArtillery(units[i], !anyOn);
             }
         }
     }
@@ -274,6 +342,19 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
 
         ApplyRadarState(unit, radars, enable);
         return true;
+    }
+
+    private static void SetIgnoreArtillery(Unit unit, bool enable)
+    {
+        CommanderNetwork.Forward("ignoreart", CommanderNetwork.Id(unit), CommanderNetwork.Flag(enable));
+        if (enable)
+        {
+            IgnoreArtilleryUnits.Add(unit);
+        }
+        else
+        {
+            IgnoreArtilleryUnits.Remove(unit);
+        }
     }
 
     private static FireControl? FindBatteryController(Unit unit)
@@ -631,6 +712,15 @@ internal sealed class CommanderRadarService : ICommanderActivate, ICommanderDeac
         }
 
         SetUnitRadar(unit, enable);
+    }
+
+    /// <summary>A guest's IGNORE ARTILLERY switch, on the host, where the SAM picks its targets.</summary>
+    private void HostIgnoreArtillery(FactionHQ hq, string[] args)
+    {
+        if (CommanderNetwork.TryUnit(args, 1, out Unit unit) && ReferenceEquals(unit.NetworkHQ, hq) && IsRadarSam(unit))
+        {
+            SetIgnoreArtillery(unit, CommanderNetwork.Bool(args, 2));
+        }
     }
 
     internal sealed class RadarState

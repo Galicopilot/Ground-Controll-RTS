@@ -575,7 +575,7 @@ internal sealed partial class CommanderEconomyService
     /// <summary>Cost of taking a dock from <paramref name="level"/> to the next one.</summary>
     internal static float GetNavalDockUpgradeCost(int level)
     {
-        return Mathf.Max(0f, CommanderSettings.NavalDockUpgradeCost) * level;
+        return Mathf.Max(0f, level >= 2 ? CommanderSettings.NavalDockLevel3UpgradeCost : CommanderSettings.NavalDockUpgradeCost);
     }
 
     /// <summary>
@@ -1404,7 +1404,9 @@ internal sealed partial class CommanderEconomyService
 
         float share = IncomeIntervalSeconds / 60f;
         FactionHQ? localHq = CommanderGameAccess.GetLocalHq();
-        float enemyMultiplier = Mathf.Max(0f, CommanderSettings.EnemyMineIncomeMultiplier);
+        float enemyMultiplier = CommanderSettings.EnemyDifficulty == CommanderEnemyCommanderService.DifficultyChallenging
+            ? Mathf.Max(0f, CommanderSettings.EnemyMineIncomeMultiplier)
+            : 1f;
         staleUnits.Clear();
         foreach (KeyValuePair<Unit, int> entry in incomeLevels)
         {
