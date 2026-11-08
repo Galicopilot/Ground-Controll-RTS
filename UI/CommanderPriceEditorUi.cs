@@ -392,7 +392,7 @@ internal static class CommanderPriceEditorUi
         GUI.Label(new Rect(view.x + columns.TypeX, headerY, 90f, 18f), "TYPE", CommanderUiTheme.Caption);
         GUI.Label(new Rect(view.x + columns.DefaultX, headerY, columns.DefaultWidth, 18f), "DEFAULT", CommanderUiTheme.Caption);
         GUI.Label(new Rect(view.x + columns.PriceX, headerY, columns.PriceWidth + 20f, 18f), "YOUR PRICE (M)", CommanderUiTheme.Caption);
-        GUI.Label(new Rect(view.x + columns.TierX, headerY, 90f, 18f), new GUIContent("DEPOT TIER", "The depot level a ground vehicle needs before it can be bought."), CommanderUiTheme.Caption);
+        GUI.Label(new Rect(view.x + columns.TierX, headerY, 90f, 18f), new GUIContent("TIER", "The depot or naval dock level needed before it can be bought."), CommanderUiTheme.Caption);
         CommanderUiTheme.DrawRule(new Rect(view.x, y + 63f, view.width, 1f));
 
         if (Rows.Count == 0)

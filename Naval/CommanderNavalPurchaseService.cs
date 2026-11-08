@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using NuclearOption.Networking;
@@ -217,7 +217,22 @@ internal sealed class CommanderNavalPurchaseService : ICommanderActivate, IComma
     /// </summary>
     internal static int GetRequiredDockLevel(ShipDefinition? definition)
     {
-        return definition == null ? CommanderEconomyService.MaxLevel : GetRequiredDockLevel(definition.shipType);
+        if (definition == null)
+        {
+            return CommanderEconomyService.MaxLevel;
+        }
+
+        if (CommanderPriceProfile.TryGetTier(definition.unitName, out int customTier))
+        {
+            return customTier;
+        }
+
+        return GetDefaultDockLevel(definition);
+    }
+
+    internal static int GetDefaultDockLevel(ShipDefinition definition)
+    {
+        return GetRequiredDockLevel(definition.shipType);
     }
 
     internal static bool IsUnlocked(ShipDefinition? definition, int dockLevel)

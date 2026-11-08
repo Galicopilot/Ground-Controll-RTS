@@ -312,6 +312,10 @@ internal sealed partial class CommanderEconomyService
                     TierOverrides[vehicle] = tier;
                 }
             }
+            else if (definition is ShipDefinition ship)
+            {
+                ModTiers[name] = CommanderNavalPurchaseService.GetDefaultDockLevel(ship);
+            }
 
             if (CommanderPriceProfile.TryGetUnitPrice(name, out float price))
             {
